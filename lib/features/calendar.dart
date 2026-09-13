@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:intl/intl.dart';
 
 import '../core/design.dart';
 import '../core/store.dart';
 import 'events.dart';
+import '../core/i18n.dart';
 
 const _ink = Color(0xff1e1930);
 const _soft = Color(0xff6f6688);
@@ -38,8 +39,11 @@ class _CalendarTabState extends State<CalendarTab> {
   late final Timer clock;
   final strip = ScrollController();
 
-  int _dayIndex(DateTime day) =>
-      DateTime.utc(day.year, day.month, day.day).difference(_stripOrigin).inDays;
+  int _dayIndex(DateTime day) => DateTime.utc(
+    day.year,
+    day.month,
+    day.day,
+  ).difference(_stripOrigin).inDays;
 
   DateTime _dayAt(int index) {
     final day = _stripOrigin.add(Duration(days: index));
@@ -320,7 +324,7 @@ class _CalendarTabState extends State<CalendarTab> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           IconButton(
-                            tooltip: 'Previous week',
+                            tooltip: tr('Previous week'),
                             onPressed: () => select(
                               DateTime(date.year, date.month, date.day - 7),
                             ),
@@ -343,7 +347,7 @@ class _CalendarTabState extends State<CalendarTab> {
                             ),
                           ),
                           IconButton(
-                            tooltip: 'Next week',
+                            tooltip: tr('Next week'),
                             onPressed: () => select(
                               DateTime(date.year, date.month, date.day + 7),
                             ),
@@ -420,7 +424,11 @@ class _CalendarTabState extends State<CalendarTab> {
                             )
                           else
                             Text(
-                              '${events.length} ${events.length == 1 ? 'event' : 'events'}',
+                              trCount(
+                                events.length,
+                                '{count} event',
+                                '{count} events',
+                              ),
                               style: const TextStyle(
                                 color: _soft,
                                 fontSize: 12,
@@ -509,8 +517,11 @@ class _CalendarTabState extends State<CalendarTab> {
     final color = event.isShared ? _accent : const Color(0xff22b3c4);
     return Semantics(
       button: true,
-      label:
-          '${event.title}, ${event.start.format(context)} to ${event.end.format(context)}',
+      label: tr('{title}, {start} to {end}', {
+        'title': event.title,
+        'start': event.start.format(context),
+        'end': event.end.format(context),
+      }),
       child: Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -637,7 +648,14 @@ class _CalendarTabState extends State<CalendarTab> {
           Padding(
             padding: const EdgeInsets.only(left: 62, bottom: 14),
             child: addPrompt(
-              '${minute(events[i + 1].occurrenceStartAt) - events.take(i + 1).map((e) => minute(e.occurrenceEndAt)).reduce(math.max)} min free · tap to add',
+              tr('{minutes} min free · tap to add', {
+                'minutes':
+                    minute(events[i + 1].occurrenceStartAt) -
+                    events
+                        .take(i + 1)
+                        .map((e) => minute(e.occurrenceEndAt))
+                        .reduce(math.max),
+              }),
               events
                   .take(i + 1)
                   .map((e) => minute(e.occurrenceEndAt))
@@ -734,7 +752,7 @@ class _CalendarTabState extends State<CalendarTab> {
               label: Text(
                 expanded
                     ? 'Collapse quiet hours'
-                    : '12–$first AM · nothing scheduled',
+                    : tr('12–{first} AM · nothing scheduled', {'first': first}),
                 style: const TextStyle(fontSize: 12),
               ),
             ),
@@ -757,7 +775,7 @@ class _CalendarTabState extends State<CalendarTab> {
                           SizedBox(
                             width: 48,
                             child: Text(
-                              '${hour % 12 == 0 ? 12 : hour % 12} ${hour < 12 || hour == 24 ? 'AM' : 'PM'}',
+                              DateFormat.j().format(DateTime(2000, 1, 1, hour)),
                               style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
@@ -781,7 +799,9 @@ class _CalendarTabState extends State<CalendarTab> {
                       left: 58,
                       right: 0,
                       child: addPrompt(
-                        '${(gap.end - gap.start) ~/ 60}h free · tap to add',
+                        tr('{hours}h free · tap to add', {
+                          'hours': (gap.end - gap.start) ~/ 60,
+                        }),
                         gap.start,
                       ),
                     ),

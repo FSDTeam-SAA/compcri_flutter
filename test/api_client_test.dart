@@ -30,8 +30,10 @@ void main() {
   test('raises the server error code and message', () async {
     final client = ApiClient(
       client: MockClient(
-        (_) async =>
-            http.Response(errorBody('INVALID_CREDENTIALS', 'Email or password is incorrect'), 401),
+        (_) async => http.Response(
+          errorBody('INVALID_CREDENTIALS', 'Email or password is incorrect'),
+          401,
+        ),
       ),
     );
 
@@ -41,7 +43,11 @@ void main() {
         isA<ApiException>()
             .having((e) => e.code, 'code', 'INVALID_CREDENTIALS')
             .having((e) => e.status, 'status', 401)
-            .having((e) => e.message, 'message', 'Email or password is incorrect'),
+            .having(
+              (e) => e.message,
+              'message',
+              'Email or password is incorrect',
+            ),
       ),
     );
   });
@@ -125,25 +131,31 @@ void main() {
     expect(client.session?.accessToken, 'new-access');
   });
 
-  test('clears the session and notifies when the refresh is rejected', () async {
-    var signedOut = false;
-    final client = ApiClient(
-      client: MockClient((request) async {
-        if (request.url.path.endsWith('/auth/refresh')) {
-          return http.Response(errorBody('REFRESH_TOKEN_EXPIRED', 'expired'), 401);
-        }
-        return http.Response(errorBody('INVALID_TOKEN', 'expired'), 401);
-      }),
-    )..onUnauthorized = () => signedOut = true;
+  test(
+    'clears the session and notifies when the refresh is rejected',
+    () async {
+      var signedOut = false;
+      final client = ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/auth/refresh')) {
+            return http.Response(
+              errorBody('REFRESH_TOKEN_EXPIRED', 'expired'),
+              401,
+            );
+          }
+          return http.Response(errorBody('INVALID_TOKEN', 'expired'), 401);
+        }),
+      )..onUnauthorized = () => signedOut = true;
 
-    await client.setSession(
-      const Session(accessToken: 'old', refreshToken: 'old-refresh'),
-    );
+      await client.setSession(
+        const Session(accessToken: 'old', refreshToken: 'old-refresh'),
+      );
 
-    await expectLater(client.get('/users/me'), throwsA(isA<ApiException>()));
-    expect(signedOut, isTrue);
-    expect(client.isAuthenticated, isFalse);
-  });
+      await expectLater(client.get('/users/me'), throwsA(isA<ApiException>()));
+      expect(signedOut, isTrue);
+      expect(client.isAuthenticated, isFalse);
+    },
+  );
 
   test('shares one refresh between concurrent requests', () async {
     var refreshCalls = 0;

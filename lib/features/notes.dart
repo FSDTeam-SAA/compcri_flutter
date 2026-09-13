@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import '../core/config.dart';
@@ -6,6 +6,7 @@ import '../core/config.dart';
 import '../core/design.dart';
 import '../core/store.dart';
 import '../core/time.dart';
+import '../core/i18n.dart';
 
 /// The notes inbox: everything the user typed or dictated, newest first with
 /// pinned notes held at the top.
@@ -92,7 +93,7 @@ class _NotesScreenState extends State<NotesScreen> {
                         EmptyState(
                           term.isEmpty
                               ? 'No notes yet. Tap the mic to say one, or write it down.'
-                              : 'No notes match "$term".',
+                              : tr('No notes match "{term}".', {'term': term}),
                           icon: Icons.sticky_note_2_outlined,
                         ),
                       ],
@@ -238,7 +239,9 @@ Future<void> openNoteEditor(
   String? eventId,
 }) => Navigator.push<void>(
   context,
-  MaterialPageRoute(builder: (_) => NoteEditor(note: note, eventId: eventId)),
+  MaterialPageRoute(
+    builder: (_) => NoteEditor(note: note, eventId: eventId),
+  ),
 );
 
 class NoteEditor extends StatefulWidget {
@@ -316,7 +319,9 @@ class _NoteEditorState extends State<NoteEditor> {
                       child: Text(
                         note.durationLabel.isEmpty
                             ? 'Dictated note'
-                            : 'Dictated note · ${note.durationLabel}',
+                            : tr('Dictated note · {duration}', {
+                                'duration': note.durationLabel,
+                              }),
                         style: const TextStyle(fontSize: 12, color: muted),
                       ),
                     ),
@@ -389,20 +394,24 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
       final directory = await getTemporaryDirectory();
       final path =
           '${directory.path}/note-${DateTime.now().millisecondsSinceEpoch}.m4a';
-      await recorder.start(
-        speechRecordConfig,
-        path: path,
-      );
+      await recorder.start(speechRecordConfig, path: path);
       if (mounted) setState(() => recording = true);
     } catch (error) {
-      if (mounted) toastError(context, 'Recording is unavailable: $error');
+      if (mounted) {
+        toastError(
+          context,
+          tr('Recording is unavailable: {error}', {'error': error}),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
-    label: recording ? 'Stop recording and save note' : 'Record a spoken note',
+    label: tr(
+      recording ? 'Stop recording and save note' : 'Record a spoken note',
+    ),
     child: InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: _toggle,
@@ -438,7 +447,9 @@ class NotesPreview extends StatelessWidget {
         const SizedBox(height: 20),
         Row(
           children: [
-            const Expanded(child: Text('Notes', style: TextStyle(fontSize: 16))),
+            const Expanded(
+              child: Text('Notes', style: TextStyle(fontSize: 16)),
+            ),
             TextButton(onPressed: onAll, child: const Text('All notes')),
           ],
         ),

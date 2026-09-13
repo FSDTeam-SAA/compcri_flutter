@@ -1,4 +1,5 @@
 import 'api_client.dart';
+import 'i18n.dart';
 import 'models.dart';
 import 'time.dart';
 
@@ -6,7 +7,10 @@ Map<String, dynamic> _map(dynamic value) =>
     value is Map ? value.cast<String, dynamic>() : <String, dynamic>{};
 
 List<Map<String, dynamic>> _list(dynamic value) => value is List
-    ? value.whereType<Map>().map((item) => item.cast<String, dynamic>()).toList()
+    ? value
+          .whereType<Map>()
+          .map((item) => item.cast<String, dynamic>())
+          .toList()
     : const <Map<String, dynamic>>[];
 
 /// Everything returned by a successful authentication call.
@@ -84,6 +88,8 @@ class AuthApi {
           'termsVersion': termsVersion,
           'privacyVersion': ?privacyVersion,
           'termsAccepted': true,
+          // The account starts in the language the app is showing.
+          'locale': I18n.locale,
         },
       ),
     ),
@@ -112,6 +118,7 @@ class AuthApi {
         body: {
           'idToken': idToken,
           'timeZone': DeviceTimeZone.current,
+          'locale': I18n.locale,
           if (termsVersion != null) ...{
             'termsVersion': termsVersion,
             'termsAccepted': true,
@@ -128,8 +135,11 @@ class AuthApi {
     body: {'refreshToken': refreshToken},
   );
 
-  Future<void> forgotPassword(String email) =>
-      _client.post('/auth/forgot-password', auth: false, body: {'email': email});
+  Future<void> forgotPassword(String email) => _client.post(
+    '/auth/forgot-password',
+    auth: false,
+    body: {'email': email},
+  );
 
   /// Returns the single-use reset token.
   Future<String> verifyResetOtp(String email, String code) async {
@@ -166,7 +176,8 @@ class UserApi {
   UserApi(this._client);
   final ApiClient _client;
 
-  Future<MeResponse> me() async => MeResponse.fromJson(_map(await _client.get('/users/me')));
+  Future<MeResponse> me() async =>
+      MeResponse.fromJson(_map(await _client.get('/users/me')));
 
   Future<AppUser> updateProfile(Map<String, dynamic> changes) async =>
       AppUser.fromJson(_map(await _client.patch('/users/me', body: changes)));
@@ -176,10 +187,13 @@ class UserApi {
     body: {'currentPassword': current, 'newPassword': next},
   );
 
-  Future<AppUser> updateNotificationPreferences(Map<String, bool> changes) async =>
-      AppUser.fromJson(
-        _map(await _client.patch('/users/me/notification-preferences', body: changes)),
-      );
+  Future<AppUser> updateNotificationPreferences(
+    Map<String, bool> changes,
+  ) async => AppUser.fromJson(
+    _map(
+      await _client.patch('/users/me/notification-preferences', body: changes),
+    ),
+  );
 
   /// Owned plus delegated calendars, flattened into one list.
   Future<List<CalendarInfo>> calendars() async {
@@ -406,6 +420,26 @@ class EventApi {
   Future<void> rsvp(String eventId, String status) =>
       _client.put('/events/$eventId/rsvp', body: {'status': status});
 
+  /// What a proposed time would run into, without saving anything.
+  /// [excludeEventId] is the event being moved, so its old time is ignored.
+  Future<ConflictReport> checkConflicts({
+    required String calendarId,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    String? excludeEventId,
+  }) async => ConflictReport.fromJson(
+    _map(
+      await _client.get(
+        '/calendars/$calendarId/conflicts',
+        query: {
+          'startsAt': isoUtc(startsAt),
+          'endsAt': isoUtc(endsAt),
+          'excludeEventId': ?excludeEventId,
+        },
+      ),
+    ),
+  );
+
   Future<List<TimeSlot>> availability({
     required String calendarId,
     required DateTime from,
@@ -428,7 +462,9 @@ class EventApi {
   Future<Map<String, dynamic>> updateSettings(
     String calendarId,
     Map<String, dynamic> changes,
-  ) async => _map(await _client.patch('/calendars/$calendarId/settings', body: changes));
+  ) async => _map(
+    await _client.patch('/calendars/$calendarId/settings', body: changes),
+  );
 }
 
 /// Sentinel so `null` can be sent explicitly to clear a field.
@@ -469,9 +505,9 @@ class NetworkApi {
       '/contact-requests',
       query: {'direction': incoming ? 'incoming' : 'outgoing'},
     );
-    return _list(data)
-        .map((json) => ContactRequest.fromJson(json, incoming: incoming))
-        .toList();
+    return _list(
+      data,
+    ).map((json) => ContactRequest.fromJson(json, incoming: incoming)).toList();
   }
 
   Future<void> sendContactRequest({
@@ -506,8 +542,9 @@ class NetworkApi {
   Future<Group> createGroup(String name) async =>
       Group.fromJson(_map(await _client.post('/groups', body: {'name': name})));
 
-  Future<Group> joinGroup(String code) async =>
-      Group.fromJson(_map(await _client.post('/groups/join', body: {'code': code})));
+  Future<Group> joinGroup(String code) async => Group.fromJson(
+    _map(await _client.post('/groups/join', body: {'code': code})),
+  );
 
   Future<void> leaveGroup(String id) => _client.post('/groups/$id/leave');
 
@@ -525,10 +562,9 @@ class NetworkApi {
     body: {'userId': userId, 'role': role},
   );
 
-  Future<List<GroupInvitation>> groupInvitations() async =>
-      _list(await _client.get('/group-invitations'))
-          .map(GroupInvitation.fromJson)
-          .toList();
+  Future<List<GroupInvitation>> groupInvitations() async => _list(
+    await _client.get('/group-invitations'),
+  ).map(GroupInvitation.fromJson).toList();
 
   Future<void> respondToGroupInvitation({
     required String invitationId,
@@ -565,7 +601,9 @@ class NetworkApi {
       ),
     );
     final event = data['event'];
-    return CalendarEvent.fromJson(event is Map ? event.cast<String, dynamic>() : data);
+    return CalendarEvent.fromJson(
+      event is Map ? event.cast<String, dynamic>() : data,
+    );
   }
 }
 
@@ -573,8 +611,9 @@ class AiApi {
   AiApi(this._client);
   final ApiClient _client;
 
-  Future<AiQuota> quota(String calendarId) async =>
-      AiQuota.fromJson(_map(await _client.get('/ai/quota', query: {'calendarId': calendarId})));
+  Future<AiQuota> quota(String calendarId) async => AiQuota.fromJson(
+    _map(await _client.get('/ai/quota', query: {'calendarId': calendarId})),
+  );
 
   Future<List<ConversationSummary>> conversations({String? search}) async {
     final data = await _client.get(
@@ -663,11 +702,22 @@ class AiApi {
       )
       .map(AiStreamEvent.fromJson);
 
-  Future<void> confirmAction(String actionId, {bool overrideConflicts = false}) =>
-      _client.post(
-        '/ai/actions/$actionId/confirm',
-        body: {'overrideConflicts': overrideConflicts},
-      );
+  /// Applies a proposal. [at] books an event proposal at one of its suggested
+  /// free times instead of the time it proposed.
+  Future<void> confirmAction(
+    String actionId, {
+    bool overrideConflicts = false,
+    TimeSlot? at,
+  }) => _client.post(
+    '/ai/actions/$actionId/confirm',
+    body: {
+      'overrideConflicts': overrideConflicts,
+      if (at != null) ...{
+        'startsAt': isoUtc(at.startsAt),
+        'endsAt': isoUtc(at.endsAt),
+      },
+    },
+  );
 
   Future<void> rejectAction(String actionId) =>
       _client.post('/ai/actions/$actionId/reject');
@@ -780,8 +830,10 @@ class NotificationApi {
 
   Future<void> remove(String id) => _client.delete('/notifications/$id');
 
-  Future<void> registerDevice({required String token, required String platform}) =>
-      _client.post('/devices', body: {'token': token, 'platform': platform});
+  Future<void> registerDevice({
+    required String token,
+    required String platform,
+  }) => _client.post('/devices', body: {'token': token, 'platform': platform});
 
   Future<void> unregisterDevice(String token) =>
       _client.delete('/devices', body: {'token': token});
@@ -792,8 +844,14 @@ class MediaApi {
   final ApiClient _client;
 
   /// Uploads an image and returns its media id.
-  Future<String> upload({required String filePath, required String purpose}) async {
-    final asset = await _client.uploadImage(filePath: filePath, purpose: purpose);
+  Future<String> upload({
+    required String filePath,
+    required String purpose,
+  }) async {
+    final asset = await _client.uploadImage(
+      filePath: filePath,
+      purpose: purpose,
+    );
     return '${asset['_id']}';
   }
 
@@ -815,7 +873,13 @@ class LegalApi {
 
   Future<LegalDocument> document(String type, {String locale = 'en'}) async =>
       LegalDocument.fromJson(
-        _map(await _client.get('/legal/$type', auth: false, query: {'locale': locale})),
+        _map(
+          await _client.get(
+            '/legal/$type',
+            auth: false,
+            query: {'locale': locale},
+          ),
+        ),
       );
 
   Future<void> submitSupportRequest({
@@ -854,8 +918,9 @@ class DelegationApi {
   Future<Map<String, dynamic>> lookup(String email) async =>
       _map(await _client.post('/delegations/lookup', body: {'email': email}));
 
-  Future<List<Delegation>> list() async =>
-      _list(await _client.get('/delegations')).map(Delegation.fromJson).toList();
+  Future<List<Delegation>> list() async => _list(
+    await _client.get('/delegations'),
+  ).map(Delegation.fromJson).toList();
 
   Future<Delegation> createForNewAccount({
     required String email,
@@ -890,7 +955,9 @@ class DelegationApi {
   );
 
   Future<Delegation> updatePreset(String id, String preset) async =>
-      Delegation.fromJson(_map(await _client.patch('/delegations/$id', body: {'preset': preset})));
+      Delegation.fromJson(
+        _map(await _client.patch('/delegations/$id', body: {'preset': preset})),
+      );
 
   Future<void> revoke(String id) => _client.delete('/delegations/$id');
 }

@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart' hide Text;
 import 'package:image_picker/image_picker.dart';
 
 import '../core/api.dart';
@@ -6,7 +8,9 @@ import '../core/api_client.dart';
 import '../core/design.dart';
 import '../core/store.dart';
 import '../core/time.dart';
+import 'conflicts.dart';
 import 'notes.dart';
+import '../core/i18n.dart';
 
 /// Opens a picker and returns the chosen file path, or null.
 Future<String?> pickImagePath(BuildContext context) async {
@@ -41,7 +45,10 @@ Future<String?> pickImagePath(BuildContext context) async {
     return file?.path;
   } catch (error) {
     if (context.mounted) {
-      toastError(context, 'Could not open the picker: $error');
+      toastError(
+        context,
+        tr('Could not open the picker: {error}', {'error': error}),
+      );
     }
     return null;
   }
@@ -190,9 +197,18 @@ class _EventFormState extends State<EventForm> {
   /// For a repeating event, whether the pending save targets the whole series.
   bool seriesEdit = true;
 
+  /// Live verdict on the time being picked, refreshed whenever it changes.
+  ConflictReport? conflictReport;
+  bool checkingConflicts = false;
+  Timer? _conflictDebounce;
+  int _conflictCheck = 0;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _checkConflicts();
+    });
     final initial = widget.initialStart;
     if (initial != null) {
       date = DateUtils.dateOnly(initial);
@@ -216,25 +232,76 @@ class _EventFormState extends State<EventForm> {
 
   @override
   void dispose() {
+    _conflictDebounce?.cancel();
     title.dispose();
     location.dispose();
     description.dispose();
     super.dispose();
   }
 
-  int _minutes(TimeOfDay value) => value.hour * 60 + value.minute;
+  /// The picked date and times as instants. An end at or before the start
+  /// means the event runs past midnight into the next day.
+  (DateTime, DateTime) _range() {
+    final startsAt = combine(date, start);
+    var endsAt = combine(date, end);
+    if (!endsAt.isAfter(startsAt)) endsAt = endsAt.add(const Duration(days: 1));
+    return (startsAt, endsAt);
+  }
 
-  /// Advisory overlap hint drawn from events already loaded. The server does
-  /// the authoritative check and can still reject the save.
-  List<CalendarEvent> _localOverlaps(AppStore store) => store.events
-      .where(
-        (other) =>
-            other.id != widget.event?.id &&
-            DateUtils.isSameDay(other.occurrenceStartAt, date) &&
-            _minutes(start) < _minutes(other.end) &&
-            _minutes(end) > _minutes(other.start),
-      )
-      .toList();
+  /// Applies a date or time change and re-checks it once picking settles.
+  void _changeTime(VoidCallback change) {
+    setState(change);
+    _conflictDebounce?.cancel();
+    setState(() => checkingConflicts = true);
+    _conflictDebounce = Timer(
+      const Duration(milliseconds: 350),
+      _checkConflicts,
+    );
+  }
+
+  void _applySlot(TimeSlot slot) => _changeTime(() {
+    date = DateUtils.dateOnly(slot.startsAt);
+    start = TimeOfDay.fromDateTime(slot.startsAt);
+    end = TimeOfDay.fromDateTime(slot.endsAt);
+  });
+
+  /// Asks the server — which sees every event, repeating ones included — what
+  /// the picked time runs into. Offline, the events already loaded stand in.
+  Future<void> _checkConflicts() async {
+    final store = StoreScope.read(context);
+    if (store.calendarId.isEmpty) return;
+    final check = ++_conflictCheck;
+    final (startsAt, endsAt) = _range();
+    setState(() => checkingConflicts = true);
+    ConflictReport report;
+    try {
+      report = await store.api.events.checkConflicts(
+        calendarId: store.calendarId,
+        startsAt: startsAt,
+        endsAt: endsAt,
+        excludeEventId: widget.event?.id,
+      );
+    } catch (_) {
+      report = ConflictReport(
+        conflicts: [
+          for (final other in store.events)
+            if (other.id != widget.event?.id &&
+                other.occurrenceStartAt.isBefore(endsAt) &&
+                other.occurrenceEndAt.isAfter(startsAt))
+              EventConflict(
+                title: other.title,
+                startsAt: other.occurrenceStartAt,
+                endsAt: other.occurrenceEndAt,
+              ),
+        ],
+      );
+    }
+    if (!mounted || check != _conflictCheck) return;
+    setState(() {
+      conflictReport = report;
+      checkingConflicts = false;
+    });
+  }
 
   Future<void> _choosePoster() async {
     final path = await pickImagePath(context);
@@ -255,18 +322,7 @@ class _EventFormState extends State<EventForm> {
 
   Future<void> save() async {
     if (!form.currentState!.validate()) return;
-    final startsAt = combine(date, start);
-    var endsAt = combine(date, end);
-    if (!endsAt.isAfter(startsAt)) {
-      // A late-night event that ends the next morning is still valid.
-      endsAt = _minutes(end) <= _minutes(start)
-          ? endsAt.add(const Duration(days: 1))
-          : endsAt;
-    }
-    if (!endsAt.isAfter(startsAt)) {
-      toast(context, 'End time must be after the start time.');
-      return;
-    }
+    final (startsAt, endsAt) = _range();
 
     // Editing a recurring event has to say whether it means this occurrence or
     // the whole series; the API has a separate endpoint for each.
@@ -277,7 +333,39 @@ class _EventFormState extends State<EventForm> {
       seriesEdit = scope == _EditScope.series;
     }
 
+    // Settle a clash before saving, instead of after the server refuses it.
+    if (checkingConflicts || conflictReport == null) {
+      _conflictDebounce?.cancel();
+      await _checkConflicts();
+      if (!mounted) return;
+    }
+    final report = conflictReport;
+    if (report != null && !report.clear) {
+      await _resolveClash(report, startsAt, endsAt);
+      return;
+    }
     await _submit(startsAt, endsAt, overrideConflicts: false);
+  }
+
+  /// Lets the user move to a suggested free time or keep both events.
+  Future<void> _resolveClash(
+    ConflictReport report,
+    DateTime startsAt,
+    DateTime endsAt,
+  ) async {
+    final decision = await showConflictSheet(
+      context,
+      report,
+      title: title.text.trim(),
+    );
+    if (decision == null || !mounted) return;
+    final slot = decision.slot;
+    if (slot != null) {
+      _applySlot(slot);
+      await _submit(slot.startsAt, slot.endsAt, overrideConflicts: false);
+    } else {
+      await _submit(startsAt, endsAt, overrideConflicts: true);
+    }
   }
 
   Future<_EditScope?> _askEditScope() => showDialog<_EditScope>(
@@ -356,83 +444,19 @@ class _EventFormState extends State<EventForm> {
     if (result != null && mounted) Navigator.pop(context, true);
   }
 
-  /// The API refuses overlapping events on premium calendars unless the
-  /// caller opts in, and hands back free alternatives to offer instead.
+  /// The server refuses a clash the live check could not see coming (someone
+  /// else booked the time meanwhile), and says what is free instead.
   void _onSaveError(ApiException error, DateTime startsAt, DateTime endsAt) {
     if (!error.isConflict) {
       toastError(context, error.message);
       return;
     }
     final details = error.details;
-    final conflicts = details is Map
-        ? EventConflict.listFrom(details['conflicts'])
-        : const <EventConflict>[];
-    final alternatives = details is Map
-        ? TimeSlot.listFrom(details['alternatives'])
-        : const <TimeSlot>[];
-
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: const Text('Schedule overlap'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('This time overlaps:', style: TextStyle(fontSize: 13)),
-              const SizedBox(height: 8),
-              ...conflicts.map(
-                (conflict) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    '• ${conflict.title} · ${TimeOfDay.fromDateTime(conflict.startsAt).format(dialogContext)}–${TimeOfDay.fromDateTime(conflict.endsAt).format(dialogContext)}',
-                    style: const TextStyle(fontSize: 12, color: muted),
-                  ),
-                ),
-              ),
-              if (alternatives.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                const Text('Free slots', style: TextStyle(fontSize: 13)),
-                const SizedBox(height: 6),
-                ...alternatives
-                    .take(4)
-                    .map(
-                      (slot) => ActionChip(
-                        label: Text(
-                          '${formatDay(slot.startsAt)} · ${TimeOfDay.fromDateTime(slot.startsAt).format(dialogContext)}',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                        onPressed: () {
-                          Navigator.pop(dialogContext);
-                          setState(() {
-                            date = DateUtils.dateOnly(slot.startsAt);
-                            start = TimeOfDay.fromDateTime(slot.startsAt);
-                            end = TimeOfDay.fromDateTime(slot.endsAt);
-                          });
-                        },
-                      ),
-                    ),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Change time'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _submit(startsAt, endsAt, overrideConflicts: true);
-            },
-            child: const Text('Schedule anyway'),
-          ),
-        ],
-      ),
-    );
+    final report = details is Map
+        ? ConflictReport.fromJson(details.cast<String, dynamic>())
+        : const ConflictReport();
+    setState(() => conflictReport = report);
+    _resolveClash(report, startsAt, endsAt);
   }
 
   Widget picker(
@@ -467,7 +491,6 @@ class _EventFormState extends State<EventForm> {
   @override
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
-    final overlaps = _localOverlaps(store);
     final hasPoster =
         !posterCleared && (posterUrl != null || posterMediaId != null);
     return PageFrame(
@@ -510,7 +533,7 @@ class _EventFormState extends State<EventForm> {
                             top: 4,
                             right: 4,
                             child: IconButton(
-                              tooltip: 'Remove poster',
+                              tooltip: tr('Remove poster'),
                               style: IconButton.styleFrom(
                                 backgroundColor: Colors.white70,
                               ),
@@ -562,7 +585,7 @@ class _EventFormState extends State<EventForm> {
                         firstDate: DateTime(2020),
                         lastDate: DateTime(2040),
                       );
-                      if (picked != null) setState(() => date = picked);
+                      if (picked != null) _changeTime(() => date = picked);
                     },
                   ),
                 ),
@@ -592,7 +615,7 @@ class _EventFormState extends State<EventForm> {
                         context: context,
                         initialTime: start,
                       );
-                      if (picked != null) setState(() => start = picked);
+                      if (picked != null) _changeTime(() => start = picked);
                     },
                   ),
                 ),
@@ -607,11 +630,16 @@ class _EventFormState extends State<EventForm> {
                         context: context,
                         initialTime: end,
                       );
-                      if (picked != null) setState(() => end = picked);
+                      if (picked != null) _changeTime(() => end = picked);
                     },
                   ),
                 ),
               ],
+            ),
+            ConflictPanel(
+              checking: checkingConflicts,
+              report: conflictReport,
+              onPick: _applySlot,
             ),
             Row(
               children: [
@@ -640,24 +668,6 @@ class _EventFormState extends State<EventForm> {
               hint: 'Enter about your event...',
               controller: description,
               lines: 3,
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 250),
-              child: overlaps.isEmpty
-                  ? const SizedBox.shrink()
-                  : Padding(
-                      padding: const EdgeInsets.only(bottom: 18),
-                      child: Surface(
-                        color: const Color(0xffffe2e9),
-                        child: Text(
-                          'Overlaps with ${overlaps.first.title} (${overlaps.first.start.format(context)}–${overlaps.first.end.format(context)})',
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ),
             ),
             AsyncButton(
               widget.event == null ? 'Create Event' : 'Save Changes',
@@ -915,7 +925,13 @@ class _EventDetailsState extends State<EventDetails> {
       return Surface(
         color: const Color(0xffe2edff),
         child: Text(
-          'Shared with you · ${event.sharePermission == 'EDIT' ? 'you can edit this event' : 'view only'}',
+          tr('Shared with you · {access}', {
+            'access': tr(
+              event.sharePermission == 'EDIT'
+                  ? 'you can edit this event'
+                  : 'view only',
+            ),
+          }),
           style: const TextStyle(fontSize: 12, color: muted),
         ),
       );
@@ -930,7 +946,9 @@ class _EventDetailsState extends State<EventDetails> {
             child: Surface(
               color: const Color(0xffe2edff),
               child: Text(
-                'Your response: ${event.rsvpStatus!.toLowerCase()}',
+                tr('Your response: {status}', {
+                  'status': tr(event.rsvpStatus!.toLowerCase()),
+                }),
                 style: const TextStyle(fontSize: 12, color: muted),
               ),
             ),
@@ -1004,7 +1022,11 @@ class _ShareEventScreenState extends State<ShareEventScreen> {
         targetIds: selected.toList(),
         permission: _permissions[permission]!,
       ),
-      success: 'Event shared with ${selected.length} recipient(s)',
+      success: trCount(
+        selected.length,
+        'Event shared with {count} recipient',
+        'Event shared with {count} recipients',
+      ),
     );
     if (done && mounted) Navigator.pop(context);
   }
@@ -1101,7 +1123,7 @@ class _ShareEventScreenState extends State<ShareEventScreen> {
           TextField(
             onChanged: (value) => setState(() => query = value),
             decoration: InputDecoration(
-              hintText: groups ? 'Search groups' : 'Search contacts',
+              hintText: tr(groups ? 'Search groups' : 'Search contacts'),
               prefixIcon: const Icon(Icons.search, color: lilac),
             ),
           ),
@@ -1121,7 +1143,11 @@ class _ShareEventScreenState extends State<ShareEventScreen> {
                   (group) => _row(
                     id: group.id,
                     title: group.name,
-                    subtitle: '${group.memberCount} members',
+                    subtitle: trCount(
+                      group.memberCount,
+                      '{count} member',
+                      '{count} members',
+                    ),
                     leading: const Icon(Icons.groups_outlined, color: lilac),
                   ),
                 )
@@ -1208,7 +1234,9 @@ class _EventNotesState extends State<_EventNotes> {
       children: [
         Row(
           children: [
-            const Expanded(child: Text('Notes', style: TextStyle(fontSize: 16))),
+            const Expanded(
+              child: Text('Notes', style: TextStyle(fontSize: 16)),
+            ),
             TextButton.icon(
               onPressed: () async {
                 await openNoteEditor(context, eventId: widget.eventId);

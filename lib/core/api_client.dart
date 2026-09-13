@@ -8,6 +8,7 @@ import 'package:http_parser/http_parser.dart' show MediaType;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
+import 'i18n.dart';
 
 /// A failed API call. [code] mirrors the machine-readable `error.code` the
 /// backend returns, so screens can branch on `EVENT_CONFLICT`,
@@ -348,7 +349,9 @@ class ApiClient {
     required Duration idleTimeout,
   }) async* {
     Future<http.StreamedResponse> open() {
-      final request = build()..headers['Accept'] = 'text/event-stream';
+      final request = build()
+        ..headers['Accept'] = 'text/event-stream'
+        ..headers['Accept-Language'] = I18n.locale;
       if (_session != null) {
         request.headers['Authorization'] = 'Bearer ${_session!.accessToken}';
       }
@@ -458,6 +461,8 @@ class ApiClient {
   }) async {
     final request = http.Request(method, _uri(path, query));
     request.headers['Accept'] = 'application/json';
+    // The server answers errors in the language the app is showing.
+    request.headers['Accept-Language'] = I18n.locale;
     if (body != null) {
       request.headers['Content-Type'] = 'application/json';
       request.body = jsonEncode(body);
@@ -494,6 +499,8 @@ class ApiClient {
     bool retried = false,
   }) async {
     request.headers['Accept'] = 'application/json';
+    // The server answers errors in the language the app is showing.
+    request.headers['Accept-Language'] = I18n.locale;
     if (_session != null) {
       request.headers['Authorization'] = 'Bearer ${_session!.accessToken}';
     }
@@ -578,8 +585,10 @@ class ApiClient {
     }
   }
 
-  static String get _offlineMessage =>
-      'Cannot reach the server at ${ApiConfig.serverUrl}. Check that the API is running and reachable from this device.';
+  static String get _offlineMessage => tr(
+    'Cannot reach the server at {url}. Check that the API is running and reachable from this device.',
+    {'url': ApiConfig.serverUrl},
+  );
 
   Map<String, dynamic> _decode(http.Response response) {
     Map<String, dynamic>? body;
@@ -606,7 +615,9 @@ class ApiClient {
       );
     }
     throw ApiException(
-      'Request failed with status ${response.statusCode}',
+      tr('Request failed with status {status}', {
+        'status': response.statusCode,
+      }),
       code: 'HTTP_${response.statusCode}',
       status: response.statusCode,
     );
@@ -628,6 +639,7 @@ class ApiClient {
       final request = http.Request('POST', _uri('/auth/refresh', null))
         ..headers['Content-Type'] = 'application/json'
         ..headers['Accept'] = 'application/json'
+        ..headers['Accept-Language'] = I18n.locale
         ..body = jsonEncode({'refreshToken': current.refreshToken});
       final response = await _execute(request, ApiConfig.requestTimeout);
       final data = _decode(response)['data'] as Map<String, dynamic>;

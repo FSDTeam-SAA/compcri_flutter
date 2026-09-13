@@ -16,35 +16,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// A conversation whose turn is streamed back one frame at a time, each one
 /// released only when the test says so — which is what lets the assertions land
 /// mid-answer rather than after it.
-MockClient streamingBackend(Stream<String> frames) => MockClient.streaming((
-  request,
-  body,
-) async {
-  if (request.url.path.endsWith('/messages/stream')) {
-    return http.StreamedResponse(
-      frames.map(utf8.encode),
-      200,
-      headers: {'content-type': 'text/event-stream'},
-    );
-  }
-  return http.StreamedResponse(
-    Stream.value(
-      utf8.encode(
-        jsonEncode({
-          'success': true,
-          'data': {
-            '_id': 'thread',
-            'title': 'Planning',
-            'calendarId': 'calendar',
-            'messages': [],
-          },
-        }),
-      ),
-    ),
-    200,
-    headers: {'content-type': 'application/json'},
-  );
-});
+MockClient streamingBackend(Stream<String> frames) =>
+    MockClient.streaming((request, body) async {
+      if (request.url.path.endsWith('/messages/stream')) {
+        return http.StreamedResponse(
+          frames.map(utf8.encode),
+          200,
+          headers: {'content-type': 'text/event-stream'},
+        );
+      }
+      return http.StreamedResponse(
+        Stream.value(
+          utf8.encode(
+            jsonEncode({
+              'success': true,
+              'data': {
+                '_id': 'thread',
+                'title': 'Planning',
+                'calendarId': 'calendar',
+                'messages': [],
+              },
+            }),
+          ),
+        ),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
 
 /// Lets the HTTP stream and the widget's own async work run for real, then
 /// rebuilds. The screen never settles on its own — the idle voice orb animates
@@ -83,7 +81,9 @@ Future<StreamController<String>> pumpChat(WidgetTester tester) async {
   final frames = StreamController<String>();
   await tester.pumpWidget(
     StoreScope(
-      notifier: AppStore(api: Api(ApiClient(client: streamingBackend(frames.stream)))),
+      notifier: AppStore(
+        api: Api(ApiClient(client: streamingBackend(frames.stream))),
+      ),
       child: MaterialApp(
         theme: appTheme,
         home: const ConversationScreen(conversationId: 'thread'),

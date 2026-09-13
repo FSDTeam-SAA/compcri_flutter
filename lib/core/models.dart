@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'i18n.dart';
 
 /// Helpers shared by every model.
 String? _id(dynamic value) {
@@ -468,13 +469,21 @@ class EventConflict {
 
 /// A free slot suggested alongside a conflict.
 class TimeSlot {
-  const TimeSlot({required this.startsAt, required this.endsAt});
+  const TimeSlot({
+    required this.startsAt,
+    required this.endsAt,
+    this.reason = 'FREE_SLOT',
+  });
 
   final DateTime startsAt, endsAt;
+
+  /// Why it was suggested: `AFTER_CONFLICT`, `BEFORE_CONFLICT` or `FREE_SLOT`.
+  final String reason;
 
   factory TimeSlot.fromJson(Map<String, dynamic> json) => TimeSlot(
     startsAt: _date(json['startsAt']) ?? DateTime.now(),
     endsAt: _date(json['endsAt']) ?? DateTime.now(),
+    reason: _string(json['reason'], 'FREE_SLOT'),
   );
 
   static List<TimeSlot> listFrom(dynamic value) => value is List
@@ -483,6 +492,28 @@ class TimeSlot {
             .map((item) => TimeSlot.fromJson(item.cast<String, dynamic>()))
             .toList()
       : const <TimeSlot>[];
+}
+
+/// The verdict on a proposed time: what it overlaps, and the nearest free
+/// times instead. [enforced] means saving it anyway takes an explicit override.
+class ConflictReport {
+  const ConflictReport({
+    this.conflicts = const <EventConflict>[],
+    this.alternatives = const <TimeSlot>[],
+    this.enforced = true,
+  });
+
+  final List<EventConflict> conflicts;
+  final List<TimeSlot> alternatives;
+  final bool enforced;
+
+  bool get clear => conflicts.isEmpty;
+
+  factory ConflictReport.fromJson(Map<String, dynamic> json) => ConflictReport(
+    conflicts: EventConflict.listFrom(json['conflicts']),
+    alternatives: TimeSlot.listFrom(json['alternatives']),
+    enforced: json['enforced'] != false,
+  );
 }
 
 /// A person in the address book: contact, group member, or assistant.
@@ -762,29 +793,38 @@ class PendingAction {
     required this.type,
     required this.payload,
     this.conflicts = const <EventConflict>[],
+    this.alternatives = const <TimeSlot>[],
   });
 
   final String id, type;
   final Map<String, dynamic> payload;
   final List<EventConflict> conflicts;
 
+  /// Free times the proposal can be booked at instead of its clashing one.
+  final List<TimeSlot> alternatives;
+
+  ConflictReport get conflictReport =>
+      ConflictReport(conflicts: conflicts, alternatives: alternatives);
+
+  String get title => _string(payload['title']);
+
   /// A proposed note carries its text in `body`; the title may be derived.
   String get _noteLabel {
     final text = _string(
       payload['title'],
-      _string(payload['body'], 'this note'),
+      _string(payload['body'], tr('this note')),
     );
     return text.length <= 60 ? text : '${text.substring(0, 60).trimRight()}…';
   }
 
   String get summary {
-    final title = _string(payload['title'], 'this event');
+    final title = _string(payload['title'], tr('this event'));
     return switch (type) {
-      'CREATE_EVENT' => 'Create "$title"',
-      'UPDATE_EVENT' => 'Update "$title"',
-      'DELETE_EVENT' => 'Delete "$title"',
-      'CREATE_NOTE' => 'Save note "$_noteLabel"',
-      _ => 'Apply this change',
+      'CREATE_EVENT' => tr('Create "{title}"', {'title': title}),
+      'UPDATE_EVENT' => tr('Update "{title}"', {'title': title}),
+      'DELETE_EVENT' => tr('Delete "{title}"', {'title': title}),
+      'CREATE_NOTE' => tr('Save note "{note}"', {'note': _noteLabel}),
+      _ => tr('Apply this change'),
     };
   }
 
@@ -795,6 +835,7 @@ class PendingAction {
         ? (json['payload'] as Map).cast<String, dynamic>()
         : const <String, dynamic>{},
     conflicts: EventConflict.listFrom(json['conflictWarnings']),
+    alternatives: TimeSlot.listFrom(json['suggestedTimes']),
   );
 
   static List<PendingAction> listFrom(dynamic value) => value is List
@@ -860,7 +901,16 @@ class Conversation {
 /// work happening behind it, `reset` retracts text the model is about to
 /// replace — notes it wrote before calling a tool, or a half-written answer
 /// from a provider that then failed — and `done` closes with the saved turn.
-enum AiEventKind { transcript, delta, tools, reset, done, audio, audioError, error }
+enum AiEventKind {
+  transcript,
+  delta,
+  tools,
+  reset,
+  done,
+  audio,
+  audioError,
+  error,
+}
 
 class AiStreamEvent {
   const AiStreamEvent(

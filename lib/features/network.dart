@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
 import '../core/design.dart';
 import '../core/store.dart';
 import 'events.dart';
+import '../core/i18n.dart';
 
 class NetworkTab extends StatefulWidget {
   const NetworkTab({super.key});
@@ -33,10 +34,7 @@ class _NetworkTabState extends State<NetworkTab> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, update) => AlertDialog(
           backgroundColor: Colors.white,
-          title: const Text(
-            'Add Contact Code',
-            style: TextStyle(fontSize: 17),
-          ),
+          title: const Text('Add Contact Code', style: TextStyle(fontSize: 17)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -160,7 +158,7 @@ class _NetworkTabState extends State<NetworkTab> {
                 clipBehavior: Clip.none,
                 children: [
                   IconButton(
-                    tooltip: 'Requests and invitations',
+                    tooltip: tr('Requests and invitations'),
                     onPressed: () => go(context, '/requests'),
                     icon: const Icon(Icons.person_add_alt, size: 21),
                   ),
@@ -265,14 +263,14 @@ class _NetworkTabState extends State<NetworkTab> {
         Expanded(
           child: TextField(
             onChanged: (value) => setState(() => query = value),
-            decoration: const InputDecoration(
-              hintText: 'Search contact',
-              prefixIcon: Icon(Icons.search, color: lilac, size: 22),
+            decoration: InputDecoration(
+              hintText: tr('Search contact'),
+              prefixIcon: const Icon(Icons.search, color: lilac, size: 22),
             ),
           ),
         ),
         PopupMenuButton<String>(
-          tooltip: 'Filter contacts',
+          tooltip: tr('Filter contacts'),
           icon: const Icon(Icons.filter_list, color: lilac),
           onSelected: (value) => setState(() => filter = value),
           itemBuilder: (_) => ['All', 'Family', 'Friends', 'Co Workers']
@@ -322,8 +320,8 @@ class _NetworkTabState extends State<NetworkTab> {
               Expanded(
                 child: TextField(
                   controller: code,
-                  decoration: const InputDecoration(
-                    hintText: 'Enter invite code',
+                  decoration: InputDecoration(
+                    hintText: tr('Enter invite code'),
                   ),
                 ),
               ),
@@ -381,7 +379,11 @@ class _NetworkTabState extends State<NetworkTab> {
                 ),
                 title: Text(group.name, style: const TextStyle(fontSize: 14)),
                 subtitle: Text(
-                  '${group.memberCount} member${group.memberCount == 1 ? '' : 's'}',
+                  trCount(
+                    group.memberCount,
+                    '{count} member',
+                    '{count} members',
+                  ),
                   style: const TextStyle(fontSize: 10, color: muted),
                 ),
                 trailing: const Icon(Icons.chevron_right, color: muted),
@@ -425,7 +427,7 @@ class InviteCode extends StatelessWidget {
         InkWell(
           onTap: () {
             Clipboard.setData(ClipboardData(text: code));
-            toast(context, '$label copied');
+            toast(context, tr('{label} copied', {'label': tr(label)}));
           },
           child: const Padding(
             padding: EdgeInsets.all(5),
@@ -593,7 +595,9 @@ class _RequestsScreenState extends State<RequestsScreen> {
                         ),
                         title: Text(invitation.groupName),
                         subtitle: Text(
-                          'Invited as ${invitation.role.toLowerCase()}',
+                          tr('Invited as {role}', {
+                            'role': tr(invitation.role.toLowerCase()),
+                          }),
                           style: const TextStyle(fontSize: 11, color: muted),
                         ),
                       ),
@@ -680,19 +684,18 @@ class _ContactDetailsState extends State<ContactDetails> {
   List<CalendarEvent> get _visible {
     final now = DateTime.now();
     return switch (tab) {
-      0 => shared
-          .where(
-            (event) =>
-                event.occurrenceStartAt.isBefore(now) &&
-                event.occurrenceEndAt.isAfter(now),
-          )
-          .toList(),
-      1 => shared
-          .where((event) => event.occurrenceStartAt.isAfter(now))
-          .toList(),
-      _ => shared
-          .where((event) => event.occurrenceEndAt.isBefore(now))
-          .toList(),
+      0 =>
+        shared
+            .where(
+              (event) =>
+                  event.occurrenceStartAt.isBefore(now) &&
+                  event.occurrenceEndAt.isAfter(now),
+            )
+            .toList(),
+      1 =>
+        shared.where((event) => event.occurrenceStartAt.isAfter(now)).toList(),
+      _ =>
+        shared.where((event) => event.occurrenceEndAt.isBefore(now)).toList(),
     };
   }
 
@@ -709,16 +712,23 @@ class _ContactDetailsState extends State<ContactDetails> {
           title: const Text('Relation', style: TextStyle(fontSize: 17)),
           content: SelectField(
             '',
-            value: const [
+            value:
+                const [
+                  'Friend',
+                  'Family',
+                  'Coworker',
+                  'Assistant',
+                  'Other',
+                ].contains(relation)
+                ? relation
+                : 'Other',
+            values: const [
               'Friend',
               'Family',
               'Coworker',
               'Assistant',
               'Other',
-            ].contains(relation)
-                ? relation
-                : 'Other',
-            values: const ['Friend', 'Family', 'Coworker', 'Assistant', 'Other'],
+            ],
             onChanged: (value) => update(() => relation = value),
           ),
           actions: [
@@ -789,7 +799,9 @@ class _ContactDetailsState extends State<ContactDetails> {
                         final confirmed = await confirm(
                           context,
                           'Remove contact?',
-                          'Remove ${contact.name} from your contacts?',
+                          tr('Remove {name} from your contacts?', {
+                            'name': contact.name,
+                          }),
                           action: 'Remove',
                           danger: true,
                         );
@@ -991,11 +1003,9 @@ class _GroupDetailsState extends State<GroupDetails> {
 
     await runAction(
       context,
-      () => store.api.network.inviteMember(
-        groupId: group.id,
-        userId: chosen.id,
-      ),
-      success: 'Invitation sent to ${chosen.name}',
+      () =>
+          store.api.network.inviteMember(groupId: group.id, userId: chosen.id),
+      success: tr('Invitation sent to {name}', {'name': chosen.name}),
     );
   }
 
@@ -1006,25 +1016,23 @@ class _GroupDetailsState extends State<GroupDetails> {
       context,
       owner ? 'Delete group?' : 'Leave group?',
       owner
-          ? 'Deleting removes ${group.name} for every member.'
-          : 'You will leave ${group.name}.',
+          ? tr('Deleting removes {group} for every member.', {
+              'group': group.name,
+            })
+          : tr('You will leave {group}.', {'group': group.name}),
       action: owner ? 'Delete' : 'Leave',
       danger: true,
     );
     if (!confirmed || !mounted) return;
 
-    final done = await runAction(
-      context,
-      () async {
-        if (owner) {
-          await store.api.network.deleteGroup(group.id);
-          await store.loadNetwork(silent: true);
-        } else {
-          await store.leaveGroup(group);
-        }
-      },
-      success: owner ? 'Group deleted' : 'You left the group',
-    );
+    final done = await runAction(context, () async {
+      if (owner) {
+        await store.api.network.deleteGroup(group.id);
+        await store.loadNetwork(silent: true);
+      } else {
+        await store.leaveGroup(group);
+      }
+    }, success: owner ? 'Group deleted' : 'You left the group');
     if (done && mounted) Navigator.pop(context);
   }
 
@@ -1044,8 +1052,8 @@ class _GroupDetailsState extends State<GroupDetails> {
             leading: const Icon(Icons.groups_outlined, color: lilac, size: 36),
             title: Text(group.name),
             subtitle: Text(
-              '${group.members.length} member${group.members.length == 1 ? '' : 's'}'
-              '${owner ? ' · you own this group' : ''}',
+              '${trCount(group.members.length, '{count} member', '{count} members')}'
+              '${owner ? ' · ${tr('you own this group')}' : ''}',
               style: const TextStyle(fontSize: 11, color: muted),
             ),
             trailing: loading

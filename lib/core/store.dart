@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'api.dart';
 import 'api_client.dart';
 import 'config.dart';
+import 'i18n.dart';
 import 'models.dart';
 import 'time.dart';
 
@@ -74,20 +75,22 @@ class AppStore extends ChangeNotifier {
   List<CalendarEvent> get invitations =>
       sharedEvents.where((event) => event.invited).toList();
 
-  List<CalendarEvent> eventsOn(DateTime day) => [
-    ...events,
-    ...sharedEvents,
-  ].where((event) => DateUtils.isSameDay(event.occurrenceStartAt, day)).toList()
-    ..sort((a, b) => a.occurrenceStartAt.compareTo(b.occurrenceStartAt));
+  List<CalendarEvent> eventsOn(DateTime day) =>
+      [...events, ...sharedEvents]
+          .where((event) => DateUtils.isSameDay(event.occurrenceStartAt, day))
+          .toList()
+        ..sort((a, b) => a.occurrenceStartAt.compareTo(b.occurrenceStartAt));
 
   List<CalendarEvent> get todayEvents => eventsOn(DateTime.now());
 
   List<CalendarEvent> get upcomingEvents {
     final now = DateTime.now();
-    final list = [...events, ...sharedEvents]
-        .where((event) => event.occurrenceEndAt.isAfter(now))
-        .toList()
-      ..sort((a, b) => a.occurrenceStartAt.compareTo(b.occurrenceStartAt));
+    final list =
+        [
+            ...events,
+            ...sharedEvents,
+          ].where((event) => event.occurrenceEndAt.isAfter(now)).toList()
+          ..sort((a, b) => a.occurrenceStartAt.compareTo(b.occurrenceStartAt));
     return list;
   }
 
@@ -109,11 +112,7 @@ class AppStore extends ChangeNotifier {
     if (session != null) {
       try {
         await loadProfile();
-        await Future.wait([
-          loadEvents(),
-          loadNetwork(),
-          loadNotifications(),
-        ]);
+        await Future.wait([loadEvents(), loadNetwork(), loadNotifications()]);
       } on ApiException {
         // A stale or rejected session drops the user back to sign-in.
         await signOut(callServer: false);
@@ -145,6 +144,7 @@ class AppStore extends ChangeNotifier {
   Future<void> loadProfile() async {
     final me = await api.users.me();
     user = me.user;
+    _adoptLanguage();
     calendar = me.calendar;
     if (calendar != null) {
       calendars = [calendar!];
@@ -180,6 +180,7 @@ class AppStore extends ChangeNotifier {
   Future<void> _adopt(AuthResult result) async {
     await api.client.setSession(result.session);
     user = result.user;
+    _adoptLanguage();
     signedOutRemotely = false;
     notifyListeners();
     await loadProfile();
@@ -255,7 +256,15 @@ class AppStore extends ChangeNotifier {
 
   Future<void> updateProfile(Map<String, dynamic> changes) async {
     user = await api.users.updateProfile(changes);
+    _adoptLanguage();
     notifyListeners();
+  }
+
+  /// The profile holds the language, so it follows the user to every device
+  /// and the server answers — errors, notifications, emails — in it too.
+  void _adoptLanguage() {
+    final code = user?.locale;
+    if (code != null && code != I18n.locale) unawaited(I18n.apply(code));
   }
 
   Future<void> updateAvatar(String filePath) async {
@@ -454,7 +463,8 @@ class AppStore extends ChangeNotifier {
     await api.events.rsvp(event.id, status);
     sharedEvents = sharedEvents
         .map(
-          (item) => item.id == event.id ? item.copyWith(rsvpStatus: status) : item,
+          (item) =>
+              item.id == event.id ? item.copyWith(rsvpStatus: status) : item,
         )
         .toList();
     notifyListeners();
@@ -582,8 +592,7 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  Future<List<Note>> searchNotes(String term) =>
-      api.notes.list(search: term);
+  Future<List<Note>> searchNotes(String term) => api.notes.list(search: term);
 
   Future<Note> createNote({
     required String body,
@@ -638,7 +647,8 @@ class AppStore extends ChangeNotifier {
     return updated;
   }
 
-  Future<void> togglePinned(Note note) => updateNote(note, pinned: !note.pinned);
+  Future<void> togglePinned(Note note) =>
+      updateNote(note, pinned: !note.pinned);
 
   Future<void> deleteNote(Note note) async {
     await api.notes.delete(note.id);
@@ -648,16 +658,17 @@ class AppStore extends ChangeNotifier {
 
   /// Keeps the cache in the server's order after an edit.
   void _replaceNote(Note updated) {
-    notes = [
-      for (final note in notes)
-        if (note.id == updated.id) updated else note,
-    ]..sort((a, b) {
-      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-      final left = a.updatedAt ?? a.createdAt;
-      final right = b.updatedAt ?? b.createdAt;
-      if (left == null || right == null) return 0;
-      return right.compareTo(left);
-    });
+    notes =
+        [
+          for (final note in notes)
+            if (note.id == updated.id) updated else note,
+        ]..sort((a, b) {
+          if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+          final left = a.updatedAt ?? a.createdAt;
+          final right = b.updatedAt ?? b.createdAt;
+          if (left == null || right == null) return 0;
+          return right.compareTo(left);
+        });
     notifyListeners();
   }
 
@@ -717,7 +728,9 @@ class AppStore extends ChangeNotifier {
 
   Future<void> revokeDelegation(Delegation delegation) async {
     await api.delegations.revoke(delegation.id);
-    delegations = delegations.where((item) => item.id != delegation.id).toList();
+    delegations = delegations
+        .where((item) => item.id != delegation.id)
+        .toList();
     notifyListeners();
   }
 
@@ -741,7 +754,6 @@ class StoreScope extends InheritedNotifier<AppStore> {
       context.dependOnInheritedWidgetOfExactType<StoreScope>()!.notifier!;
 
   /// Reads the store without subscribing to rebuilds.
-  static AppStore read(BuildContext context) => context
-      .getInheritedWidgetOfExactType<StoreScope>()!
-      .notifier!;
+  static AppStore read(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<StoreScope>()!.notifier!;
 }

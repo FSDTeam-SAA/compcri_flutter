@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:intl/intl.dart';
 
 import '../core/design.dart';
@@ -6,6 +6,7 @@ import '../core/store.dart';
 import '../core/time.dart';
 import 'events.dart';
 import 'notes.dart';
+import '../core/i18n.dart';
 
 const _ink = Color(0xff1e1930);
 const _muted = Color(0xff6f6688);
@@ -29,10 +30,13 @@ class HomeTab extends StatelessWidget {
     final nextLabel = until == null
         ? ''
         : until.inMinutes < 1
-        ? 'starting soon'
+        ? tr('starting soon')
         : until.inHours > 0
-        ? 'next in ${until.inHours}h ${until.inMinutes % 60}m'
-        : 'next in ${until.inMinutes}m';
+        ? tr('next in {hours}h {minutes}m', {
+            'hours': until.inHours,
+            'minutes': until.inMinutes % 60,
+          })
+        : tr('next in {minutes}m', {'minutes': until.inMinutes});
     return RefreshIndicator(
       color: _violet,
       onRefresh: () async {
@@ -109,7 +113,7 @@ class HomeTab extends StatelessWidget {
                       : '${store.unreadNotifications}',
                 ),
                 child: IconButton(
-                  tooltip: 'Notifications',
+                  tooltip: tr('Notifications'),
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.white.withValues(alpha: .8),
                   ),
@@ -124,7 +128,7 @@ class HomeTab extends StatelessWidget {
               const SizedBox(width: 10),
               Semantics(
                 button: true,
-                label: 'Profile',
+                label: tr('Profile'),
                 child: InkWell(
                   customBorder: const CircleBorder(),
                   onTap: () => go(context, '/profile'),
@@ -139,7 +143,10 @@ class HomeTab extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            '${greeting()}, ${store.user?.firstNameOrEmail ?? 'there'}',
+            tr('{greeting}, {name}', {
+              'greeting': greeting(),
+              'name': store.user?.firstNameOrEmail ?? tr('there'),
+            }),
             style: const TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.w800,
@@ -152,7 +159,7 @@ class HomeTab extends StatelessWidget {
           Text(
             today.isEmpty
                 ? 'Your day, with a little more breathing room.'
-                : '${today.length} ${today.length == 1 ? 'event' : 'events'} today${nextLabel.isEmpty ? '' : ' · $nextLabel'}',
+                : '${trCount(today.length, '{count} event today', '{count} events today')}${nextLabel.isEmpty ? '' : ' · $nextLabel'}',
             style: const TextStyle(fontSize: 13, color: _muted, height: 1.5),
           ),
           const SizedBox(height: 16),
@@ -415,9 +422,9 @@ class DashboardNav extends StatelessWidget {
                   child: Semantics(
                     button: true,
                     selected: selected == i,
-                    label: labels[i],
+                    label: tr(labels[i]),
                     child: Tooltip(
-                      message: labels[i],
+                      message: tr(labels[i]),
                       child: Material(
                         color: selected == i ? _violet : Colors.transparent,
                         borderRadius: BorderRadius.circular(18),

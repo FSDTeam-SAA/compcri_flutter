@@ -303,7 +303,12 @@ void main() {
         'title': 'Planning',
         'calendarId': '65b1f77bcf86cd7994390100',
         'messages': [
-          {'_id': 'a', 'role': 'USER', 'content': 'old', 'supersededAt': '2026-09-10T00:00:00.000Z'},
+          {
+            '_id': 'a',
+            'role': 'USER',
+            'content': 'old',
+            'supersededAt': '2026-09-10T00:00:00.000Z',
+          },
           {'_id': 'b', 'role': 'USER', 'content': 'new'},
         ],
       });

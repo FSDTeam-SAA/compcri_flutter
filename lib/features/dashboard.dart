@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
@@ -15,10 +15,12 @@ import '../core/markdown.dart';
 import '../core/store.dart';
 import '../core/time.dart';
 import 'calendar.dart';
+import 'conflicts.dart';
 export 'calendar.dart' show CalendarTab;
 import 'network.dart';
 import 'home.dart';
 import 'voice_experience.dart';
+import '../core/i18n.dart';
 export 'home.dart' show HomeTab;
 
 export '../core/time.dart' show monthName;
@@ -162,7 +164,7 @@ class _ChatTabState extends State<ChatTab> {
                 ),
               ),
               IconButton(
-                tooltip: 'Chat history',
+                tooltip: tr('Chat history'),
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute<void>(
@@ -288,7 +290,8 @@ class _ChatTabState extends State<ChatTab> {
             separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (context, index) => _PromptChip(
               label: _prompts[index],
-              onTap: () => _openChat(context, prompt: _prompts[index]),
+              // Aria answers in the language of the message, so send it translated.
+              onTap: () => _openChat(context, prompt: tr(_prompts[index])),
             ),
           ),
         ),
@@ -372,7 +375,7 @@ class _ChatRow extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Delete chat',
+                  tooltip: tr('Delete chat'),
                   visualDensity: VisualDensity.compact,
                   icon: const Icon(
                     Icons.delete_outline,
@@ -478,6 +481,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   bool mutedAudio = false;
   String? voiceError;
   String? retryAudioPath;
+
   /// The voice turn in flight has been transcribed and is being answered.
   bool transcribed = false;
 
@@ -1351,42 +1355,59 @@ class _ConversationScreenState extends State<ConversationScreen> {
     });
   }
 
-  Future<void> _resolveAction(PendingAction action, bool confirmIt) async {
+  /// Confirms or discards a proposal. [at] books it at one of its suggested
+  /// free times; [overrideConflicts] keeps it alongside what it overlaps.
+  Future<void> _resolveAction(
+    PendingAction action,
+    bool confirmIt, {
+    TimeSlot? at,
+    bool overrideConflicts = false,
+  }) async {
     final store = StoreScope.read(context);
     final done = await runAction(
       context,
       () async {
         if (confirmIt) {
-          await store.api.ai.confirmAction(action.id);
+          await store.api.ai.confirmAction(
+            action.id,
+            overrideConflicts: overrideConflicts,
+            at: at,
+          );
           await store.loadEvents(silent: true);
         } else {
           await store.api.ai.rejectAction(action.id);
         }
       },
-      success: confirmIt ? 'Applied to your calendar' : 'Discarded',
+      success: !confirmIt
+          ? 'Discarded'
+          : at != null
+          ? tr('Booked for {day} at {time}', {
+              'day': conflictDay(at.startsAt),
+              'time': TimeOfDay.fromDateTime(at.startsAt).format(context),
+            })
+          : 'Applied to your calendar',
       onError: (error) async {
         if (!error.isConflict) {
           toastError(context, error.message);
           return;
         }
-        final proceed = await confirm(
+        // The time filled up after the proposal was made; offer what is
+        // free now rather than a bare yes/no.
+        final details = error.details;
+        final decision = await showConflictSheet(
           context,
-          'Schedule overlap',
-          'This change overlaps an existing event. Apply it anyway?',
-          action: 'Apply',
+          details is Map
+              ? ConflictReport.fromJson(details.cast<String, dynamic>())
+              : action.conflictReport,
+          title: action.title,
         );
-        if (!proceed || !mounted) return;
-        await runAction(context, () async {
-          await store.api.ai.confirmAction(action.id, overrideConflicts: true);
-          await store.loadEvents(silent: true);
-        }, success: 'Applied to your calendar');
-        if (mounted) {
-          setState(
-            () => pendingActions = pendingActions
-                .where((item) => item.id != action.id)
-                .toList(),
-          );
-        }
+        if (decision == null || !mounted) return;
+        await _resolveAction(
+          action,
+          true,
+          at: decision.slot,
+          overrideConflicts: decision.keepBoth,
+        );
       },
     );
     if (done && mounted) {
@@ -1408,7 +1429,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
             title: const Text('Voice with Aria'),
             actions: [
               IconButton(
-                tooltip: 'Chat history',
+                tooltip: tr('Chat history'),
                 onPressed:
                     sending ||
                         recording ||
@@ -1441,7 +1462,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
               voiceLabel: AriaVoice.find(preferredVoice)?.label ?? 'Voice',
               allowance: quota == null
                   ? null
-                  : '${quota!.remaining} LEFT TODAY',
+                  : tr('{count} LEFT TODAY', {'count': quota!.remaining}),
               allowanceLow: quota?.low ?? false,
               controller: input,
               scroll: scroll,
@@ -1493,7 +1514,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   child: Text(
                     quota!.exhausted
                         ? 'None left today'
-                        : '${quota!.remaining} left today',
+                        : tr('{count} left today', {'count': quota!.remaining}),
                     style: const TextStyle(
                       color: Color(0xffa33f5c),
                       fontSize: 11,
@@ -1503,7 +1524,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 ),
               ),
             IconButton(
-              tooltip: 'Chat history',
+              tooltip: tr('Chat history'),
               onPressed:
                   sending || recording || recorderBusy || retryAudioPath != null
                   ? null
@@ -1543,7 +1564,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
                         padding: const EdgeInsets.all(20),
                         itemCount: messages.length + 1,
                         itemBuilder: (context, i) {
-                          if (i < messages.length) return _bubble(messages[i], i);
+                          if (i < messages.length) {
+                            return _bubble(messages[i], i);
+                          }
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -1613,14 +1636,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   enabled: !sending && !recording && !recorderBusy,
                   onSubmitted: _send,
                   decoration: InputDecoration(
-                    hintText: 'Ask anything',
+                    hintText: tr('Ask anything'),
                     suffixIcon: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
                           tooltip: recording
-                              ? 'Stop and send'
-                              : 'Record a voice message',
+                              ? tr('Stop and send')
+                              : tr('Record a voice message'),
                           onPressed: sending ? null : _toggleVoice,
                           icon: Icon(
                             recording ? Icons.stop_circle : Icons.mic_none,
@@ -1629,7 +1652,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           ),
                         ),
                         IconButton(
-                          tooltip: 'Send message',
+                          tooltip: tr('Send message'),
                           onPressed: sending || recording || recorderBusy
                               ? null
                               : () => _send(input.text),
@@ -1682,18 +1705,17 @@ class _ConversationScreenState extends State<ConversationScreen> {
                         ),
                       ],
                     ),
-                    if (action.conflicts.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          'Overlaps ${action.conflicts.first.title}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.red,
-                          ),
-                        ),
+                    if (action.conflicts.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      ConflictPanel(
+                        report: action.conflictReport,
+                        background: Colors.white,
+                        suggestionsTitle: 'Tap a free time to book it instead',
+                        onPick: (slot) =>
+                            _resolveAction(action, true, at: slot),
                       ),
-                    const SizedBox(height: 10),
+                    ] else
+                      const SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
@@ -1706,8 +1728,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: PrimaryButton(
-                            'Confirm',
-                            onPressed: () => _resolveAction(action, true),
+                            // The overlap is already on the card, so confirming
+                            // here is the informed choice to keep both.
+                            action.conflicts.isEmpty ? 'Confirm' : 'Keep both',
+                            onPressed: () => _resolveAction(
+                              action,
+                              true,
+                              overrideConflicts: action.conflicts.isNotEmpty,
+                            ),
                           ),
                         ),
                       ],
@@ -1808,7 +1836,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       VoidCallback? onPressed, {
       Color color = muted,
     }) => IconButton(
-      tooltip: tooltip,
+      tooltip: tr(tooltip),
       onPressed: onPressed,
       padding: EdgeInsets.zero,
       visualDensity: VisualDensity.compact,
@@ -1864,6 +1892,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final work = activeTools
         .map((tool) => _toolLabels[tool])
         .nonNulls
+        .map(tr)
         .toSet()
         .join(' · ');
     return Align(
@@ -1914,8 +1943,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
   /// Whichever of the two applies: dots and the work in progress until the
   /// first word lands, the answer itself from then on.
-  Widget _inFlight() =>
-      streamingText.isEmpty ? _typingBubble() : _liveBubble();
+  Widget _inFlight() => streamingText.isEmpty ? _typingBubble() : _liveBubble();
 
   Future<void> _editMessage(ChatMessage message) async {
     final id = conversationId;
@@ -2009,9 +2037,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: TextField(
                 onChanged: (value) => setState(() => historyQuery = value),
-                decoration: const InputDecoration(
-                  hintText: 'Search chat history',
-                  prefixIcon: Icon(Icons.search, size: 20, color: muted),
+                decoration: InputDecoration(
+                  hintText: tr('Search chat history'),
+                  prefixIcon: const Icon(Icons.search, size: 20, color: muted),
                 ),
               ),
             ),

@@ -57,7 +57,10 @@ class MarkdownText extends StatelessWidget {
     void add(Widget block, double gap) => out.add(
       out.isEmpty
           ? block
-          : Padding(padding: EdgeInsets.only(top: gap), child: block),
+          : Padding(
+              padding: EdgeInsets.only(top: gap),
+              child: block,
+            ),
     );
 
     // Single newlines are kept as line breaks: a model laying a date and a
@@ -101,7 +104,11 @@ class MarkdownText extends StatelessWidget {
       final heading = _heading.firstMatch(trimmed);
       if (heading != null) {
         flush();
-        final bump = switch (heading[1]!.length) { 1 => 4.0, 2 => 2.5, _ => 1.0 };
+        final bump = switch (heading[1]!.length) {
+          1 => 4.0,
+          2 => 2.5,
+          _ => 1.0,
+        };
         add(
           _text(
             heading[2]!,
@@ -332,7 +339,9 @@ class _StreamedMarkdownState extends State<StreamedMarkdown>
     // Reduced motion still owes the caller its completion, just without the
     // typing — and not during a build.
     if (widget.animate) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => widget.onDone?.call());
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => widget.onDone?.call(),
+      );
     }
   }
 
@@ -389,9 +398,7 @@ class _StreamedMarkdownState extends State<StreamedMarkdown>
       builder: (context, _) {
         final typing = _reveal.value < 1;
         if (typing && widget.onTick != null && _frame++ % 4 == 0) {
-          WidgetsBinding.instance.addPostFrameCallback(
-            (_) => widget.onTick!(),
-          );
+          WidgetsBinding.instance.addPostFrameCallback((_) => widget.onTick!());
         }
         final shown = (_reveal.value * widget.source.length).ceil();
         return MarkdownText(

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
+import 'i18n.dart';
 
 import 'api_client.dart';
 
@@ -141,7 +142,7 @@ class CreateEventButton extends StatelessWidget {
           ),
         ),
         child: IconButton(
-          tooltip: 'Create Event',
+          tooltip: tr('Create Event'),
           onPressed: onPressed,
           constraints: const BoxConstraints.tightFor(width: 58, height: 58),
           icon: const Icon(Icons.add_rounded, color: Colors.white, size: 29),
@@ -380,13 +381,20 @@ class _AppFieldState extends State<AppField> {
           keyboardType: widget.keyboard,
           readOnly: widget.readOnly,
           onTap: widget.onTap,
-          validator: widget.validator,
+          // Validation messages render inside the field, outside any Text
+          // this app controls, so they are translated on the way out.
+          validator: widget.validator == null
+              ? null
+              : (value) {
+                  final message = widget.validator!(value);
+                  return message == null ? null : tr(message);
+                },
           style: const TextStyle(fontSize: 13),
           decoration: InputDecoration(
-            hintText: widget.hint ?? widget.label,
+            hintText: tr(widget.hint ?? widget.label),
             suffixIcon: widget.password
                 ? IconButton(
-                    tooltip: hidden ? 'Show password' : 'Hide password',
+                    tooltip: tr(hidden ? 'Show password' : 'Hide password'),
                     onPressed: () => setState(() => hidden = !hidden),
                     icon: Icon(
                       hidden
@@ -657,7 +665,7 @@ class _VoiceOrbState extends State<VoiceOrb> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
-    label: widget.active ? 'Recording. Tap to send.' : 'Tap and say it',
+    label: tr(widget.active ? 'Recording. Tap to send.' : 'Tap and say it'),
     child: GestureDetector(
       onTap: widget.onTap,
       child: SizedBox(
@@ -971,7 +979,7 @@ Future<T?> _run<T extends Object>(
     dismiss();
     messenger.showSnackBar(
       SnackBar(
-        content: Text('Something went wrong: $error'),
+        content: Text(tr('Something went wrong: {error}', {'error': error})),
         behavior: SnackBarBehavior.floating,
         backgroundColor: const Color(0xffb3261e),
       ),

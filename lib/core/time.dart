@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'i18n.dart';
+import 'package:intl/intl.dart';
 
 /// The device's IANA time zone, resolved once and cached.
 ///
@@ -53,41 +55,36 @@ DateTime startOfWeek(DateTime value) =>
   to: DateTime(anchor.year, anchor.month + 2, 1),
 );
 
-const monthNames = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
+/// The month's name in the app's language.
+String monthName(int month) =>
+    DateFormat.MMMM(I18n.dateLocale).format(DateTime(2000, month));
 
-String monthName(int month) => monthNames[(month - 1) % 12];
-
+/// A full date the way the app's language writes it: "September 14, 2026",
+/// "14 de setembro de 2026", "14 de septiembre de 2026".
 String formatDay(DateTime value) =>
-    '${monthName(value.month)} ${value.day}, ${value.year}';
+    DateFormat.yMMMMd(I18n.dateLocale).format(value);
 
 /// Short relative stamp for notification rows.
 String relativeTime(DateTime? value) {
   if (value == null) return '';
   final difference = DateTime.now().difference(value);
-  if (difference.inMinutes < 1) return 'just now';
-  if (difference.inMinutes < 60) return '${difference.inMinutes}m ago';
-  if (difference.inHours < 24) return '${difference.inHours}h ago';
-  if (difference.inDays < 7) return '${difference.inDays}d ago';
+  if (difference.inMinutes < 1) return tr('just now');
+  if (difference.inMinutes < 60) {
+    return tr('{minutes}m ago', {'minutes': difference.inMinutes});
+  }
+  if (difference.inHours < 24) {
+    return tr('{hours}h ago', {'hours': difference.inHours});
+  }
+  if (difference.inDays < 7) {
+    return tr('{days}d ago', {'days': difference.inDays});
+  }
   return formatDay(value);
 }
 
 /// Greeting used on the home header.
 String greeting() {
   final hour = DateTime.now().hour;
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 12) return tr('Good morning');
+  if (hour < 17) return tr('Good afternoon');
+  return tr('Good evening');
 }

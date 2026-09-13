@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'core/design.dart';
+import 'core/i18n.dart';
 import 'core/store.dart';
 import 'features/auth.dart';
 import 'features/dashboard.dart';
@@ -8,8 +11,12 @@ import 'features/network.dart';
 import 'features/notes.dart';
 import 'features/settings.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Month and weekday names for every language the app speaks, then the
+  // language itself, so the first frame is already in the right one.
+  await initializeDateFormatting();
+  await I18n.restore();
   runApp(const MyApp());
 }
 
@@ -46,7 +53,10 @@ class _MyAppState extends State<MyApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       store.signedOutRemotely = false;
       _bouncing = false;
-      navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (_) => false);
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        '/login',
+        (_) => false,
+      );
     });
   }
 
@@ -60,25 +70,33 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) => StoreScope(
     notifier: store,
-    child: MaterialApp(
-      title: 'Aurox Day',
-      debugShowCheckedModeBanner: false,
-      navigatorKey: navigatorKey,
-      theme: appTheme,
-      initialRoute: widget.initialRoute,
-      builder: (context, child) => ColoredBox(
-        color: const Color(0xffeeeaf8),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: child!,
+    // Changing language rebuilds the app with the new locale; every screen
+    // translates itself through it, including ones already open.
+    child: ValueListenableBuilder<String>(
+      valueListenable: I18n.listenable,
+      builder: (context, locale, _) => MaterialApp(
+        title: 'Aurox Day',
+        debugShowCheckedModeBanner: false,
+        navigatorKey: navigatorKey,
+        theme: appTheme,
+        locale: Locale(locale),
+        supportedLocales: [for (final code in I18n.supported) Locale(code)],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        initialRoute: widget.initialRoute,
+        builder: (context, child) => ColoredBox(
+          color: const Color(0xffeeeaf8),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: child!,
+            ),
           ),
         ),
+        onGenerateInitialRoutes: (name) => [
+          buildRoute(RouteSettings(name: name)),
+        ],
+        onGenerateRoute: buildRoute,
       ),
-      onGenerateInitialRoutes: (name) => [
-        buildRoute(RouteSettings(name: name)),
-      ],
-      onGenerateRoute: buildRoute,
     ),
   );
 }

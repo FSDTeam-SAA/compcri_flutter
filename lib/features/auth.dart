@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import '../core/api_client.dart';
 import '../core/design.dart';
 import '../core/store.dart';
+import '../core/i18n.dart';
 export 'onboarding.dart' show OnboardingScreen;
 
 /// Waits for the session restore in [AppStore.bootstrap] and routes onwards.
@@ -250,7 +251,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Copy account code',
+                      tooltip: tr('Copy account code'),
                       onPressed: () =>
                           Clipboard.setData(ClipboardData(text: code)),
                       icon: const Icon(Icons.copy, size: 16),
@@ -375,7 +376,9 @@ class _AuthScreenState extends State<AuthScreen> {
                     : signup
                     ? 'Complete your information below.'
                     : otp
-                    ? 'Enter the 6-digit code sent to ${flow?.email ?? 'your email'}'
+                    ? tr('Enter the 6-digit code sent to {email}', {
+                        'email': flow?.email ?? tr('your email'),
+                      })
                     : "Enter your email and we'll send you a code to\nreset your password",
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 13),

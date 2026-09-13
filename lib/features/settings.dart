@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -8,6 +8,7 @@ import '../core/store.dart';
 import '../core/time.dart';
 import 'events.dart';
 import 'network.dart';
+import '../core/i18n.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key, required this.route, this.arguments});
@@ -70,7 +71,9 @@ class SettingsScreen extends StatelessWidget {
       case '/subscription':
         return const SubscriptionScreen();
       case '/summary':
-        return SummaryScreen(plan: arguments is String ? arguments! as String : 'Premium Monthly');
+        return SummaryScreen(
+          plan: arguments is String ? arguments! as String : 'Premium Monthly',
+        );
       case '/contact-us':
         return const ContactUsScreen();
       case '/terms':
@@ -94,7 +97,11 @@ Widget settingsRow(
   bool danger = false,
 }) => ListTile(
   dense: true,
-  leading: Icon(icon, size: 21, color: danger ? const Color(0xffff684a) : muted),
+  leading: Icon(
+    icon,
+    size: 21,
+    color: danger ? const Color(0xffff684a) : muted,
+  ),
   title: Text(
     title,
     style: TextStyle(
@@ -200,7 +207,12 @@ class ProfileScreen extends StatelessWidget {
                   'Edit Profile',
                   '/profile/edit',
                 ),
-                settingsRow(context, Icons.tune, 'General Settings', '/general'),
+                settingsRow(
+                  context,
+                  Icons.tune,
+                  'General Settings',
+                  '/general',
+                ),
                 settingsRow(
                   context,
                   Icons.sticky_note_2_outlined,
@@ -428,11 +440,7 @@ class _ProfileFormState extends State<ProfileForm> {
               controller: phone,
               keyboard: TextInputType.phone,
             ),
-            AppField(
-              'Profession',
-              hint: 'Profession',
-              controller: profession,
-            ),
+            AppField('Profession', hint: 'Profession', controller: profession),
             SelectField(
               'Language',
               value: language,
@@ -547,7 +555,7 @@ class ProfileSummary extends StatelessWidget {
       auth: true,
       actions: [
         IconButton(
-          tooltip: 'Edit profile',
+          tooltip: tr('Edit profile'),
           onPressed: () => go(context, '/profile/edit'),
           icon: const Icon(Icons.edit_outlined),
         ),
@@ -590,10 +598,7 @@ class ProfileSummary extends StatelessWidget {
                       color: const Color(0xffe9e7ff),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text(
-                      interest,
-                      style: const TextStyle(fontSize: 13),
-                    ),
+                    child: Text(interest, style: const TextStyle(fontSize: 13)),
                   ),
                 )
                 .toList(),
@@ -739,7 +744,10 @@ class _DeleteScreenState extends State<DeleteScreen> {
         content: Text(
           purgeAt == null
               ? 'You can restore your account by signing in during the recovery window.'
-              : 'You can restore your account by signing in before ${formatDay(purgeAt)}.\n\nDeleting the account does not cancel an App Store or Play Store subscription.',
+              : tr(
+                  'You can restore your account by signing in before {date}.\n\nDeleting the account does not cancel an App Store or Play Store subscription.',
+                  {'date': formatDay(purgeAt)},
+                ),
           style: const TextStyle(fontSize: 13),
         ),
         actions: [
@@ -809,7 +817,9 @@ class _DeleteScreenState extends State<DeleteScreen> {
               ),
             ),
             const SizedBox(width: 20),
-            Expanded(child: AsyncButton('Delete', danger: true, onPressed: _delete)),
+            Expanded(
+              child: AsyncButton('Delete', danger: true, onPressed: _delete),
+            ),
           ],
         ),
       ],
@@ -877,7 +887,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         heading = label;
         rows.add(
           Padding(
-            padding: EdgeInsets.only(left: 4, top: rows.isEmpty ? 0 : 14, bottom: 10),
+            padding: EdgeInsets.only(
+              left: 4,
+              top: rows.isEmpty ? 0 : 14,
+              bottom: 10,
+            ),
             child: Text(
               label,
               style: const TextStyle(
@@ -1044,7 +1058,10 @@ class _NotificationCard extends StatelessWidget {
                               ),
                               if (!item.read)
                                 Container(
-                                  margin: const EdgeInsets.only(top: 5, left: 8),
+                                  margin: const EdgeInsets.only(
+                                    top: 5,
+                                    left: 8,
+                                  ),
                                   width: 8,
                                   height: 8,
                                   decoration: const BoxDecoration(
@@ -1374,28 +1391,24 @@ class _AssistantFormState extends State<AssistantForm> {
     }
 
     final delegation = widget.delegation;
-    final done = await runAction(
-      context,
-      () async {
-        if (delegation != null) {
-          await store.api.delegations.updatePreset(delegation.id, preset);
-        } else if (existingUserId != null) {
-          await store.api.delegations.createForExistingAccount(
-            userId: existingUserId!,
-            preset: preset,
-          );
-        } else {
-          await store.api.delegations.createForNewAccount(
-            email: email.text.trim(),
-            displayName: name.text.trim(),
-            password: password.text,
-            preset: preset,
-          );
-        }
-        await store.loadDelegations();
-      },
-      success: delegation == null ? 'Secretary added' : 'Permission updated',
-    );
+    final done = await runAction(context, () async {
+      if (delegation != null) {
+        await store.api.delegations.updatePreset(delegation.id, preset);
+      } else if (existingUserId != null) {
+        await store.api.delegations.createForExistingAccount(
+          userId: existingUserId!,
+          preset: preset,
+        );
+      } else {
+        await store.api.delegations.createForNewAccount(
+          email: email.text.trim(),
+          displayName: name.text.trim(),
+          password: password.text,
+          preset: preset,
+        );
+      }
+      await store.loadDelegations();
+    }, success: delegation == null ? 'Secretary added' : 'Permission updated');
     if (done && mounted) Navigator.pop(context);
   }
 
@@ -1405,7 +1418,9 @@ class _AssistantFormState extends State<AssistantForm> {
     final confirmed = await confirm(
       context,
       'Remove permission?',
-      '${delegation.person.name} will lose access to your calendar.',
+      tr('{name} will lose access to your calendar.', {
+        'name': delegation.person.name,
+      }),
       action: 'Remove',
       danger: true,
     );
@@ -1468,7 +1483,8 @@ class _AssistantFormState extends State<AssistantForm> {
                 controller: password,
                 password: true,
                 hint: '********',
-                validator: (v) => existingUserId != null || (v?.length ?? 0) >= 10
+                validator: (v) =>
+                    existingUserId != null || (v?.length ?? 0) >= 10
                     ? null
                     : 'Use at least 10 characters',
               ),
@@ -1573,28 +1589,34 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Current plan: ${store.subscription?.label ?? (store.isPremium ? 'Premium' : 'Free Plan')}',
+                        tr('Current plan: {plan}', {
+                          'plan': tr(
+                            store.subscription?.label ??
+                                (store.isPremium ? 'Premium' : 'Free Plan'),
+                          ),
+                        }),
                         style: const TextStyle(fontSize: 13),
                       ),
                       if (store.subscription?.expiresAt != null)
                         Text(
-                          '${store.subscription!.willRenew ? 'Renews' : 'Ends'} ${formatDay(store.subscription!.expiresAt!)}',
+                          tr(
+                            store.subscription!.willRenew
+                                ? 'Renews {date}'
+                                : 'Ends {date}',
+                            {'date': formatDay(store.subscription!.expiresAt!)},
+                          ),
                           style: const TextStyle(fontSize: 11, color: muted),
                         ),
                     ],
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Refresh from the store',
-                  onPressed: () => runAction(
-                    context,
-                    () async {
-                      await store.api.subscriptions.reconcile();
-                      await store.loadSubscription();
-                      await store.loadProfile();
-                    },
-                    success: 'Subscription refreshed',
-                  ),
+                  tooltip: tr('Refresh from the store'),
+                  onPressed: () => runAction(context, () async {
+                    await store.api.subscriptions.reconcile();
+                    await store.loadSubscription();
+                    await store.loadProfile();
+                  }, success: 'Subscription refreshed'),
                   icon: const Icon(Icons.refresh, size: 20),
                 ),
               ],
@@ -1730,12 +1752,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     });
   }
 
-  Widget planContent(
-    BuildContext context,
-    int i,
-    bool active,
-    AppStore store,
-  ) {
+  Widget planContent(BuildContext context, int i, bool active, AppStore store) {
     final ink = i == 1 ? Colors.black : Colors.white;
     final features = i == 0
         ? ['Up to 50 events/month', 'Basic reminders', 'Manual event entry']
@@ -1950,15 +1967,11 @@ class SummaryScreen extends StatelessWidget {
             'I completed the purchase — refresh',
             icon: Icons.refresh,
             onPressed: () async {
-              await runAction(
-                context,
-                () async {
-                  await store.api.subscriptions.reconcile();
-                  await store.loadSubscription();
-                  await store.loadProfile();
-                },
-                success: 'Subscription refreshed',
-              );
+              await runAction(context, () async {
+                await store.api.subscriptions.reconcile();
+                await store.loadSubscription();
+                await store.loadProfile();
+              }, success: 'Subscription refreshed');
               if (context.mounted && store.isPremium) Navigator.pop(context);
             },
           ),
@@ -2089,7 +2102,9 @@ class _LegalScreenState extends State<LegalScreen> {
   Future<void> _load() async {
     final store = StoreScope.read(context);
     try {
-      final locale = store.user?.locale ?? 'en';
+      // The documents come in the language the app is showing, which is also
+      // the one a signed-out visitor sees.
+      final locale = I18n.locale;
       final fetched = await store.api.legal.document(
         widget.privacy ? 'privacy' : 'terms',
         locale: locale,
@@ -2132,7 +2147,7 @@ class _LegalScreenState extends State<LegalScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Version ${document!.version}',
+            tr('Version {version}', {'version': document!.version}),
             style: const TextStyle(fontSize: 11, color: muted),
           ),
           const SizedBox(height: 16),

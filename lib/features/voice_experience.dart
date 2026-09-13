@@ -1,6 +1,7 @@
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import '../core/design.dart';
+import '../core/i18n.dart';
 
 /// Presentation for voice conversations; recording and messages belong to the
 /// conversation controller so switching input methods never loses the thread.
@@ -36,6 +37,7 @@ class VoiceExperience extends StatefulWidget {
     this.allowance,
     this.allowanceLow = false,
   });
+
   /// The turn in flight has been transcribed and the reply is being written.
   final bool transcribed;
   final bool recording,
@@ -145,7 +147,10 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                         const SizedBox(width: 7),
                         Text(
                           widget.recording
-                              ? 'LISTENING · ${widget.seconds ~/ 60}:${(widget.seconds % 60).toString().padLeft(2, '0')}'
+                              ? tr('LISTENING · {time}', {
+                                  'time':
+                                      '${widget.seconds ~/ 60}:${(widget.seconds % 60).toString().padLeft(2, '0')}',
+                                })
                               : widget.sending
                               ? 'ONE MOMENT'
                               : widget.speaking
@@ -264,7 +269,9 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                   ),
                   if (widget.canReplay && !widget.recording && !widget.sending)
                     IconButton(
-                      tooltip: widget.speaking ? 'Stop reply' : 'Replay reply',
+                      tooltip: tr(
+                        widget.speaking ? 'Stop reply' : 'Replay reply',
+                      ),
                       onPressed: widget.onReplay,
                       icon: Icon(
                         widget.speaking
@@ -305,7 +312,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                               ? null
                               : () {
                                   setState(() => typing = true);
-                                  widget.controller.text = suggestion;
+                                  widget.controller.text = tr(suggestion);
                                 },
                           child: Row(
                             children: [
@@ -403,9 +410,9 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                   textInputAction: TextInputAction.send,
                   onSubmitted: widget.onSend,
                   decoration: InputDecoration(
-                    hintText: 'Type your message…',
+                    hintText: tr('Type your message…'),
                     suffixIcon: IconButton(
-                      tooltip: 'Send message',
+                      tooltip: tr('Send message'),
                       onPressed: disabled
                           ? null
                           : () => widget.onSend(widget.controller.text),
@@ -424,8 +431,8 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                     tooltip: widget.recording
                         ? 'Cancel recording'
                         : typing
-                        ? 'Use microphone'
-                        : 'Type instead',
+                        ? tr('Use microphone')
+                        : tr('Type instead'),
                     onPressed: disabled
                         ? null
                         : widget.recording
@@ -443,8 +450,8 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                   Semantics(
                     button: true,
                     label: widget.recording
-                        ? 'Send recording'
-                        : 'Start recording',
+                        ? tr('Send recording')
+                        : tr('Start recording'),
                     child: SizedBox(
                       width: 160,
                       height: 56,
@@ -486,8 +493,8 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                   ),
                   IconButton(
                     tooltip: widget.muted
-                        ? 'Enable spoken replies'
-                        : 'Mute spoken replies',
+                        ? tr('Enable spoken replies')
+                        : tr('Mute spoken replies'),
                     onPressed: widget.onMute,
                     icon: Icon(
                       widget.muted

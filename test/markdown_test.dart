@@ -24,12 +24,14 @@ String renderedText(WidgetTester tester) => tester
     .map((text) => text.text.toPlainText())
     .join();
 
-Future<void> pumpMarkdown(WidgetTester tester, String source) => tester
-    .pumpWidget(
+Future<void> pumpMarkdown(WidgetTester tester, String source) =>
+    tester.pumpWidget(
       MaterialApp(
         theme: appTheme,
         home: Scaffold(
-          body: Center(child: SizedBox(width: 300, child: MarkdownText(source))),
+          body: Center(
+            child: SizedBox(width: 300, child: MarkdownText(source)),
+          ),
         ),
       ),
     );
@@ -47,7 +49,9 @@ void main() {
       '\n'
       'Would you like me to create it?';
 
-  testWidgets('renders emphasis instead of printing its syntax', (tester) async {
+  testWidgets('renders emphasis instead of printing its syntax', (
+    tester,
+  ) async {
     await pumpMarkdown(tester, reply);
 
     final text = renderedText(tester);

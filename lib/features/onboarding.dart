@@ -1,7 +1,8 @@
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import '../core/design.dart';
 import '../core/store.dart';
+import '../core/i18n.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -104,29 +105,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             padding: const EdgeInsets.fromLTRB(24, 10, 16, 0),
             child: Row(
               children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: violet,
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  child: const Icon(
-                    Icons.auto_awesome_rounded,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 9),
-                const Text(
-                  'compcri',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -.5,
-                    color: Color(0xff251c39),
-                  ),
-                ),
                 const Spacer(),
                 TextButton(
                   onPressed: finishing ? null : finish,
@@ -283,7 +261,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     (i) => Semantics(
                       button: true,
                       selected: page == i,
-                      label: 'Page ${i + 1} of ${slides.length}',
+                      label: tr('Page {page} of {total}', {
+                        'page': i + 1,
+                        'total': slides.length,
+                      }),
                       child: InkWell(
                         onTap: finishing ? null : () => select(i),
                         borderRadius: BorderRadius.circular(24),

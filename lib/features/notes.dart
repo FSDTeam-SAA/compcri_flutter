@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import '../core/config.dart';
 
 import '../core/design.dart';
 import '../core/store.dart';
@@ -389,7 +390,7 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
       final path =
           '${directory.path}/note-${DateTime.now().millisecondsSinceEpoch}.m4a';
       await recorder.start(
-        const RecordConfig(encoder: AudioEncoder.aacLc),
+        speechRecordConfig,
         path: path,
       );
       if (mounted) setState(() => recording = true);

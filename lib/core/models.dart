@@ -860,7 +860,7 @@ class Conversation {
 /// work happening behind it, `reset` retracts text the model is about to
 /// replace — notes it wrote before calling a tool, or a half-written answer
 /// from a provider that then failed — and `done` closes with the saved turn.
-enum AiEventKind { delta, tools, reset, done, error }
+enum AiEventKind { transcript, delta, tools, reset, done, audio, audioError, error }
 
 class AiStreamEvent {
   const AiStreamEvent(
@@ -869,6 +869,8 @@ class AiStreamEvent {
     this.tools = const [],
     this.turn,
     this.code,
+    this.audio,
+    this.last = false,
   });
 
   final AiEventKind kind;
@@ -876,11 +878,34 @@ class AiStreamEvent {
   final List<String> tools;
   final AiTurn? turn;
 
+  /// One base64 MP3 piece of a spoken reply, on an [AiEventKind.audio];
+  /// [last] marks the final piece.
+  final String? audio;
+  final bool last;
+
   /// The backend's machine-readable error code, on an [AiEventKind.error].
   final String? code;
 
   factory AiStreamEvent.fromJson(Map<String, dynamic> json) {
     switch (json['type']) {
+      case 'transcript':
+        final transcription = json['transcription'];
+        return AiStreamEvent(
+          AiEventKind.transcript,
+          text: transcription is Map ? transcription['text'] as String? : null,
+        );
+      case 'audio':
+        return AiStreamEvent(
+          AiEventKind.audio,
+          audio: json['base64'] as String?,
+          last: json['last'] == true,
+        );
+      case 'audio_error':
+        return AiStreamEvent(
+          AiEventKind.audioError,
+          text: json['message'] as String?,
+          code: json['code'] as String?,
+        );
       case 'delta':
         return AiStreamEvent(
           AiEventKind.delta,

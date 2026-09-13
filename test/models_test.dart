@@ -271,6 +271,32 @@ void main() {
       expect(turn.audioBase64, isNull);
     });
 
+    test('reads the voice events of a streamed turn', () {
+      final transcript = AiStreamEvent.fromJson({
+        'type': 'transcript',
+        'transcription': {'text': 'book the dentist'},
+      });
+      final audio = AiStreamEvent.fromJson({
+        'type': 'audio',
+        'index': 1,
+        'last': true,
+        'base64': 'SUQz',
+      });
+      final failed = AiStreamEvent.fromJson({
+        'type': 'audio_error',
+        'code': 'AI_AUDIO_UNAVAILABLE',
+        'message': 'Voice service is temporarily unavailable',
+      });
+
+      expect(transcript.kind, AiEventKind.transcript);
+      expect(transcript.text, 'book the dentist');
+      expect(audio.kind, AiEventKind.audio);
+      expect(audio.audio, 'SUQz');
+      expect(audio.last, isTrue);
+      expect(failed.kind, AiEventKind.audioError);
+      expect(failed.code, 'AI_AUDIO_UNAVAILABLE');
+    });
+
     test('drops superseded messages from a conversation', () {
       final conversation = Conversation.fromJson({
         '_id': '65b1f77bcf86cd7994390040',

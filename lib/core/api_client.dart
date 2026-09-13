@@ -310,16 +310,52 @@ class ApiClient {
     String path, {
     Object? body,
     Duration idleTimeout = const Duration(seconds: 45),
+  }) => _eventStream(
+    () => http.Request('POST', _uri(path, null))
+      ..headers['Content-Type'] = 'application/json; charset=utf-8'
+      ..body = jsonEncode(body ?? const <String, dynamic>{}),
+    idleTimeout: idleTimeout,
+  );
+
+  /// Uploads a recorded clip and streams the server's events back, exactly as
+  /// [stream] does for a JSON body. The file is read once, so a request renewed
+  /// after a 401 sends the same bytes again.
+  Stream<Map<String, dynamic>> streamAudio({
+    required String path,
+    required String filePath,
+    Map<String, String> fields = const <String, String>{},
+    Duration idleTimeout = const Duration(seconds: 45),
+  }) async* {
+    final bytes = await File(filePath).readAsBytes();
+    final filename = filePath.split(RegExp(r'[\\/]')).last;
+    yield* _eventStream(
+      () => http.MultipartRequest('POST', _uri(path, null))
+        ..fields.addAll(fields)
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            'audio',
+            bytes,
+            filename: filename,
+            contentType: _contentTypeFor(filePath, MediaType('audio', 'm4a')),
+          ),
+        ),
+      idleTimeout: idleTimeout,
+    );
+  }
+
+  Stream<Map<String, dynamic>> _eventStream(
+    http.BaseRequest Function() build, {
+    required Duration idleTimeout,
   }) async* {
     Future<http.StreamedResponse> open() {
-      final request = http.Request('POST', _uri(path, null))
-        ..headers['Accept'] = 'text/event-stream'
-        ..headers['Content-Type'] = 'application/json; charset=utf-8'
-        ..body = jsonEncode(body ?? const <String, dynamic>{});
+      final request = build()..headers['Accept'] = 'text/event-stream';
       if (_session != null) {
         request.headers['Authorization'] = 'Bearer ${_session!.accessToken}';
       }
-      return _client.send(request);
+      // Headers only arrive once the server has something to say — for a
+      // voice turn, after the upload and the transcription — so opening has
+      // its own ceiling.
+      return _client.send(request).timeout(ApiConfig.aiRequestTimeout);
     }
 
     try {
@@ -364,6 +400,11 @@ class ApiClient {
         final decoded = jsonDecode(payload);
         if (decoded is Map<String, dynamic>) yield decoded;
       }
+    } on TimeoutException {
+      throw ApiException(
+        'The assistant took too long to respond. Please try again.',
+        code: 'TIMEOUT',
+      );
     } on SocketException {
       throw ApiException(_offlineMessage, code: 'NETWORK_ERROR');
     } on http.ClientException catch (error) {

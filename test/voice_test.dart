@@ -66,7 +66,7 @@ void main() {
         });
         var attempts = 0;
         final client = MockClient((request) async {
-          if (request.url.path.endsWith('/voice-messages')) {
+          if (request.url.path.endsWith('/voice-messages/stream')) {
             attempts++;
             if (failFirst && attempts == 1) {
               return http.Response(
@@ -81,23 +81,33 @@ void main() {
                 503,
               );
             }
-            return http.Response(
-              jsonEncode({
-                'success': true,
-                'data': {
-                  'message': {
-                    '_id': 'reply',
-                    'role': 'ASSISTANT',
-                    'content': 'What time works for you?',
-                  },
-                  'transcription': {
-                    'text': 'Schedule a meeting with Ana tomorrow.',
-                  },
-                  'audio': {'available': false},
+            return _events([
+              {
+                'type': 'transcript',
+                'transcription': {
+                  'text': 'Schedule a meeting with Ana tomorrow.',
                 },
-              }),
-              200,
-            );
+              },
+              {'type': 'delta', 'text': 'What time '},
+              {'type': 'delta', 'text': 'works for you?'},
+              {
+                'type': 'done',
+                'message': {
+                  '_id': 'reply',
+                  'role': 'ASSISTANT',
+                  'content': 'What time works for you?',
+                },
+                'pendingActions': [],
+                'transcription': {
+                  'text': 'Schedule a meeting with Ana tomorrow.',
+                },
+              },
+              {
+                'type': 'audio_error',
+                'code': 'AI_AUDIO_UNAVAILABLE',
+                'message': 'Voice service is temporarily unavailable',
+              },
+            ]);
           }
           return http.Response(
             jsonEncode({
@@ -132,11 +142,11 @@ void main() {
               () => Future<void>.delayed(const Duration(milliseconds: 50)),
             );
             await tester.pumpAndSettle();
+            // The transcript now lands before the answer, so wait for the
+            // answer and the clean-up that follows it.
             if (find.text('Retry send').evaluate().isNotEmpty ||
-                find
-                    .text('Schedule a meeting with Ana tomorrow.')
-                    .evaluate()
-                    .isNotEmpty) {
+                (find.text('What time works for you?').evaluate().isNotEmpty &&
+                    !recording.existsSync())) {
               break;
             }
           }
@@ -189,23 +199,24 @@ void main() {
 
       String? uploadBody;
       final client = MockClient((request) async {
-        if (request.url.path.endsWith('/voice-messages')) {
+        if (request.url.path.endsWith('/voice-messages/stream')) {
           uploadBody = request.body;
-          return http.Response(
-            jsonEncode({
-              'success': true,
-              'data': {
-                'message': {
-                  '_id': 'reply',
-                  'role': 'ASSISTANT',
-                  'content': 'Booked for Tuesday.',
-                },
-                'transcription': {'text': 'Book Tuesday.'},
-                'audio': {'available': false},
+          return _events([
+            {
+              'type': 'transcript',
+              'transcription': {'text': 'Book Tuesday.'},
+            },
+            {
+              'type': 'done',
+              'message': {
+                '_id': 'reply',
+                'role': 'ASSISTANT',
+                'content': 'Booked for Tuesday.',
               },
-            }),
-            200,
-          );
+              'pendingActions': [],
+              'transcription': {'text': 'Book Tuesday.'},
+            },
+          ]);
         }
         if (request.url.path.endsWith('/ai/quota')) {
           return http.Response(
@@ -262,6 +273,7 @@ void main() {
       expect(uploadBody, isNotNull);
       expect(uploadBody, contains('name="voice"'));
       expect(uploadBody, contains('nova'));
+      expect(uploadBody, contains('name="speak"'));
       // The picker reflects the stored choice rather than a generic label.
       expect(find.text('Nova'), findsOneWidget);
       expect(find.text('Hands-free off'), findsOneWidget);
@@ -275,3 +287,10 @@ void main() {
     },
   );
 }
+
+/// A server-sent event stream, the way the voice route answers.
+http.Response _events(List<Map<String, Object?>> events) => http.Response(
+  events.map((event) => 'data: ${jsonEncode(event)}\n\n').join(),
+  200,
+  headers: {'content-type': 'text/event-stream'},
+);

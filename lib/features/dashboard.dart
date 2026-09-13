@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../core/api_client.dart';
+import '../core/config.dart';
 import '../core/design.dart';
 import '../core/markdown.dart';
 import '../core/store.dart';
@@ -462,11 +463,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
   List<PendingAction> pendingActions = [];
   String? conversationId;
 
-  /// The one reply that should type itself out. Only ever the turn that just
-  /// arrived, and only for voice, which answers in one piece — a typed turn
-  /// streams for real, and reopening a conversation renders history whole.
-  String? typingId;
-
   /// The answer being streamed right now, and the tools it is running to get
   /// there. Both are cleared the moment the saved turn arrives.
   String streamingText = '';
@@ -482,7 +478,28 @@ class _ConversationScreenState extends State<ConversationScreen> {
   bool mutedAudio = false;
   String? voiceError;
   String? retryAudioPath;
-  String? lastAudio;
+  /// The voice turn in flight has been transcribed and is being answered.
+  bool transcribed = false;
+
+  /// A spoken reply arrives as MP3 pieces that play back to back from here.
+  final List<Uint8List> clipQueue = [];
+
+  /// A piece is loaded in the player right now.
+  bool clipPlaying = false;
+
+  /// More pieces of the reply being played are still on their way.
+  bool clipsPending = false;
+
+  /// Every piece of the latest spoken reply, kept for replay.
+  List<Uint8List> lastReply = const [];
+
+  /// Bumped whenever playback is stopped, so pieces still arriving for a
+  /// silenced reply are not queued behind the user's back.
+  int replyTurn = 0;
+
+  /// Bumped per voice turn, so an older turn's late audio never replaces the
+  /// newer reply kept for replay.
+  int voiceTurn = 0;
   int recordingSeconds = 0;
   double soundLevel = 0;
   Timer? recordingTimer;
@@ -533,7 +550,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     // The reply finishing is the cue to listen again; PlayerState alone does
     // not distinguish "finished" from "stopped by the user".
     completionSubscription = player.onPlayerComplete.listen((_) {
-      if (mounted) _afterReply();
+      if (mounted) _onClipComplete();
     });
     _restoreVoicePrefs();
   }
@@ -706,6 +723,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
               activeTools = const [];
             });
             _scrollToEnd();
+          case AiEventKind.transcript ||
+              AiEventKind.audio ||
+              AiEventKind.audioError:
+            // Voice-only events; a typed turn never receives them.
+            break;
           case AiEventKind.error:
             throw ApiException(
               event.text ?? 'AI assistant is temporarily unavailable',
@@ -769,7 +791,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         }
         await _sendVoice(path);
       } else {
-        await player.stop();
+        await _stopReply();
         if (!await recorder.hasPermission()) {
           throw StateError(
             'Allow microphone access in your device settings, or type your message below.',
@@ -780,10 +802,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         if (!mounted) return;
         final path =
             '${directory.path}/aurox-${DateTime.now().microsecondsSinceEpoch}.m4a';
-        await recorder.start(
-          const RecordConfig(encoder: AudioEncoder.aacLc),
-          path: path,
-        );
+        await recorder.start(speechRecordConfig, path: path);
         if (!mounted) {
           await recorder.cancel();
           return;
@@ -918,7 +937,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final store = StoreScope.read(context);
     unawaited(store.api.client.store.setMuted(value));
     if (value) {
-      await player.stop();
+      await _stopReply();
     }
   }
 
@@ -1023,31 +1042,112 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (path != null) await _deleteAudio(path);
   }
 
-  Future<void> _playReply(String audio) async {
+  /// Whether a reply is being voiced, including the short gaps between pieces.
+  bool get replySounding =>
+      speaking ||
+      clipPlaying ||
+      clipQueue.isNotEmpty ||
+      (clipsPending && lastReply.isNotEmpty);
+
+  /// Queues one piece of a spoken reply behind whatever is already playing.
+  void _enqueueClip(Uint8List clip) {
     if (mutedAudio) return;
+    clipQueue.add(clip);
+    if (!clipPlaying) unawaited(_playNextClip());
+  }
+
+  Future<void> _playNextClip() async {
+    if (!mounted || clipQueue.isEmpty) return;
+    final turn = replyTurn;
+    final clip = clipQueue.removeAt(0);
+    setState(() => clipPlaying = true);
     try {
-      await player.play(BytesSource(base64Decode(audio)));
+      await player.play(BytesSource(clip));
     } catch (_) {
-      if (mounted) {
-        setState(
-          () => voiceError =
-              'Audio playback is unavailable. You can read the reply below.',
-        );
-        // No audio means no completion event, so drive the loop by hand.
-        _afterReply();
-      }
+      if (!mounted || turn != replyTurn) return;
+      setState(() {
+        clipQueue.clear();
+        clipPlaying = false;
+        clipsPending = false;
+        voiceError =
+            'Audio playback is unavailable. You can read the reply below.';
+      });
+      // No audio means no completion event, so drive the loop by hand.
+      _afterReply();
     }
   }
 
+  /// One piece finished: play the next, or — once the whole reply has been
+  /// heard — hand the turn back. A piece still on its way starts itself.
+  void _onClipComplete() {
+    setState(() => clipPlaying = false);
+    if (clipQueue.isNotEmpty) {
+      unawaited(_playNextClip());
+    } else if (!clipsPending) {
+      _afterReply();
+    }
+  }
+
+  /// Silences the reply now and ignores any pieces still on their way.
+  Future<void> _stopReply() async {
+    replyTurn++;
+    clipQueue.clear();
+    clipsPending = false;
+    clipPlaying = false;
+    if (mounted) setState(() {});
+    await player.stop();
+  }
+
+  Future<void> _replay() async {
+    await _stopReply();
+    if (!mounted) return;
+    for (final clip in lastReply) {
+      _enqueueClip(clip);
+    }
+  }
+
+  /// The answer arrived but its voice did not. Say so, and keep a hands-free
+  /// call moving, since no completion event is coming for the missing audio.
+  void _speechFailed(int playback) {
+    if (!mounted || playback != replyTurn) return;
+    setState(() {
+      clipsPending = false;
+      voiceError =
+          'Audio playback is unavailable. You can read the reply below.';
+    });
+    if (!clipPlaying && clipQueue.isEmpty) _afterReply();
+  }
+
+  ChatMessage _transcriptBubble(String id, String? transcript) => ChatMessage(
+    id: id,
+    text: transcript?.trim().isNotEmpty == true
+        ? transcript!
+        : 'Transcript unavailable for this recording.',
+    isUser: true,
+  );
+
+  /// Sends a recording and follows the turn as it happens: the transcript
+  /// replaces the stand-in bubble as soon as the server has it, the answer
+  /// streams in like a typed one, and its speech starts with the first
+  /// sentence while the rest is still being synthesized.
   Future<void> _sendVoice(String path) async {
     if (sending) return;
     final store = StoreScope.read(context);
     final placeholder = 'voice-${DateTime.now().microsecondsSinceEpoch}';
+    final transcriptId = '$placeholder-transcript';
+    final turn = ++voiceTurn;
+    // A muted turn asks the server not to synthesize anything at all.
+    final speak = !mutedAudio;
+    final clips = <Uint8List>[];
     var delivered = false;
+    var speechOpen = false;
+    var playback = -1;
     setState(() {
       sending = true;
+      transcribed = false;
       retryAudioPath = null;
       voiceError = null;
+      lastReply = const [];
       messages = [
         ...messages,
         ChatMessage(
@@ -1058,6 +1158,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         ),
       ];
     });
+    unawaited(_stopReply());
     _scrollToEnd();
     try {
       final id = await _ensureConversation(store);
@@ -1066,60 +1167,121 @@ class _ConversationScreenState extends State<ConversationScreen> {
           'No calendar is available yet. Your recording is ready to retry.',
         );
       }
-      final turn = await store.api.ai.sendVoiceMessage(
+      await for (final event in store.api.ai.streamVoiceMessage(
         conversationId: id,
         filePath: path,
         voice: preferredVoice,
-      );
-      delivered = true;
-      if (!mounted) return;
-      setState(() {
-        messages = [
-          for (final message in messages)
-            if (message.id == placeholder)
-              ChatMessage(
-                id: '$placeholder-transcript',
-                text: turn.transcript?.trim().isNotEmpty == true
-                    ? turn.transcript!
-                    : 'Transcript unavailable for this recording.',
-                isUser: true,
-              )
-            else
-              message,
-          turn.message,
-        ];
-        pendingActions = turn.pendingActions;
-        lastAudio = turn.audioBase64;
-        typingId = turn.message.id;
-      });
-      _scrollToEnd();
-      unawaited(_loadQuota());
-      final spoken = turn.audioBase64;
-      if (spoken != null && !mutedAudio) {
-        unawaited(_playReply(spoken));
-      } else {
-        // Nothing will play, so no completion event is coming. Keep a
-        // hands-free call moving instead of stalling on a silent turn.
-        _afterReply();
+        speak: speak,
+      )) {
+        if (!mounted) return;
+        switch (event.kind) {
+          case AiEventKind.transcript:
+            setState(() {
+              transcribed = true;
+              messages = [
+                for (final message in messages)
+                  if (message.id == placeholder)
+                    _transcriptBubble(transcriptId, event.text)
+                  else
+                    message,
+              ];
+            });
+            _followTyping();
+          case AiEventKind.delta:
+            setState(() => streamingText += event.text ?? '');
+            _followTyping();
+          case AiEventKind.tools:
+            setState(() => activeTools = event.tools);
+          case AiEventKind.reset:
+            setState(() => streamingText = '');
+          case AiEventKind.done:
+            final reply = event.turn!;
+            delivered = true;
+            speechOpen = speak;
+            playback = replyTurn;
+            // The live bubble hands over to the saved one in the same frame.
+            // The turn is over as far as the controls go; its audio follows.
+            setState(() {
+              messages = [
+                for (final message in messages)
+                  if (message.id == placeholder)
+                    _transcriptBubble(transcriptId, reply.transcript)
+                  else
+                    message,
+                reply.message,
+              ];
+              pendingActions = reply.pendingActions;
+              streamingText = '';
+              activeTools = const [];
+              sending = false;
+              transcribed = false;
+              clipsPending = speechOpen;
+            });
+            _scrollToEnd();
+            unawaited(_loadQuota());
+            // Nothing will play, so no completion event is coming. Keep a
+            // hands-free call moving instead of stalling on a silent turn.
+            if (!speechOpen) _afterReply();
+          case AiEventKind.audio:
+            final audio = event.audio;
+            if (audio == null || !speechOpen) break;
+            final clip = base64Decode(audio);
+            clips.add(clip);
+            final current = playback == replyTurn;
+            if (event.last) speechOpen = false;
+            setState(() {
+              if (turn == voiceTurn) lastReply = List.unmodifiable(clips);
+              if (current && event.last) clipsPending = false;
+            });
+            if (current) _enqueueClip(clip);
+          case AiEventKind.audioError:
+            speechOpen = false;
+            _speechFailed(playback);
+          case AiEventKind.error:
+            throw ApiException(
+              event.text ?? 'AI assistant is temporarily unavailable',
+              code: event.code ?? 'AI_UNAVAILABLE',
+            );
+        }
       }
+      // A stream that stops without saying it finished means the connection
+      // died mid-answer; the recording is kept for another try.
+      if (!delivered) {
+        throw ApiException(
+          'The reply was cut off. Please try again.',
+          code: 'AI_STREAM_INCOMPLETE',
+        );
+      }
+      if (speechOpen) _speechFailed(playback);
     } catch (error) {
-      if (mounted) {
-        setState(() {
-          retryAudioPath = path;
-          voiceError = error is ApiException
-              ? error.message
-              : '$error'.replaceFirst('Bad state: ', '');
-          // A failed turn should not silently re-open the microphone; the
-          // recording is kept for an explicit retry.
-          handsFree = false;
-        });
-        if (error is ApiException && error.needsPremium) _explain(error);
+      if (!mounted) return;
+      if (delivered) {
+        // The answer is on screen; only its voice was lost on the way.
+        _speechFailed(playback);
+        return;
       }
+      setState(() {
+        retryAudioPath = path;
+        voiceError = error is ApiException
+            ? error.message
+            : '$error'.replaceFirst('Bad state: ', '');
+        // A failed turn should not silently re-open the microphone; the
+        // recording is kept for an explicit retry.
+        handsFree = false;
+      });
+      if (error is ApiException && error.needsPremium) _explain(error);
     } finally {
-      if (mounted) {
+      // A delivered turn already handed the controls back at `done`, and they
+      // may belong to a newer turn by now.
+      if (mounted && !delivered) {
         setState(() {
           sending = false;
-          messages = messages.where((m) => m.id != placeholder).toList();
+          transcribed = false;
+          streamingText = '';
+          activeTools = const [];
+          messages = messages
+              .where((m) => m.id != placeholder && m.id != transcriptId)
+              .toList();
         });
       }
       if (delivered || !mounted) await _deleteAudio(path);
@@ -1266,13 +1428,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
               recording: recording,
               busy: recorderBusy || loading,
               sending: sending,
-              speaking: speaking,
+              transcribed: transcribed,
+              speaking: replySounding,
               muted: mutedAudio,
               seconds: recordingSeconds,
               level: soundLevel,
               hasMessages: messages.isNotEmpty,
               hasRetry: retryAudioPath != null,
-              canReplay: lastAudio != null,
+              canReplay: lastReply.isNotEmpty,
               error: voiceError,
               handsFree: handsFree,
               voiceLabel: AriaVoice.find(preferredVoice)?.label ?? 'Voice',
@@ -1293,11 +1456,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
               onPickVoice: () => unawaited(_pickVoice()),
               onMute: () => unawaited(_setMuted(!mutedAudio)),
               onReplay: () {
-                if (speaking) {
-                  unawaited(player.stop());
-                } else if (lastAudio != null) {
+                if (replySounding) {
+                  unawaited(_stopReply());
+                } else if (lastReply.isNotEmpty) {
                   unawaited(_setMuted(false));
-                  unawaited(_playReply(lastAudio!));
+                  unawaited(_replay());
                 }
               },
               onSend: _send,
@@ -1601,12 +1764,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   ? StreamedMarkdown(
                       message.text,
                       style: body,
-                      animate: message.id == typingId,
-                      onDone: () {
-                        if (mounted && typingId == message.id) {
-                          setState(() => typingId = null);
-                        }
-                      },
                       onTick: _followTyping,
                     )
                   : Text(message.text, style: body),

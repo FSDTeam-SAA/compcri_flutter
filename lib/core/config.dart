@@ -1,3 +1,5 @@
+import 'package:record/record.dart';
+
 /// Backend connection settings.
 ///
 /// Override at build time:
@@ -40,3 +42,13 @@ class ApiConfig {
   static const requestTimeout = Duration(seconds: 30);
   static const aiRequestTimeout = Duration(seconds: 120);
 }
+
+/// How spoken turns are recorded. Transcription only needs speech-band audio,
+/// and 16 kHz mono AAC is a fraction of the size of the 44.1 kHz stereo
+/// default, so the upload leaves the phone several times faster on mobile data.
+const speechRecordConfig = RecordConfig(
+  encoder: AudioEncoder.aacLc,
+  sampleRate: 16000,
+  numChannels: 1,
+  bitRate: 32000,
+);

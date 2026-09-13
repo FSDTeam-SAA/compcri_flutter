@@ -646,17 +646,22 @@ class AiApi {
     required String messageId,
   }) => _client.delete('/ai/conversations/$conversationId/messages/$messageId');
 
-  Future<AiTurn> sendVoiceMessage({
+  /// A voice turn reported while it happens: [AiEventKind.transcript] first,
+  /// then the answer as it is written, [AiEventKind.done], and finally the
+  /// spoken reply as ordered [AiEventKind.audio] pieces. Pass `speak: false`
+  /// when the reply will not be played, so the server skips synthesis.
+  Stream<AiStreamEvent> streamVoiceMessage({
     required String conversationId,
     required String filePath,
     String? voice,
-  }) async => AiTurn.fromJson(
-    await _client.uploadAudio(
-      path: '/ai/conversations/$conversationId/voice-messages',
-      filePath: filePath,
-      voice: voice,
-    ),
-  );
+    bool speak = true,
+  }) => _client
+      .streamAudio(
+        path: '/ai/conversations/$conversationId/voice-messages/stream',
+        filePath: filePath,
+        fields: {'voice': ?voice, 'speak': '$speak'},
+      )
+      .map(AiStreamEvent.fromJson);
 
   Future<void> confirmAction(String actionId, {bool overrideConflicts = false}) =>
       _client.post(

@@ -8,6 +8,7 @@ class VoiceExperience extends StatefulWidget {
   const VoiceExperience({
     super.key,
     required this.recording,
+    this.transcribed = false,
     required this.busy,
     required this.sending,
     required this.speaking,
@@ -35,6 +36,8 @@ class VoiceExperience extends StatefulWidget {
     this.allowance,
     this.allowanceLow = false,
   });
+  /// The turn in flight has been transcribed and the reply is being written.
+  final bool transcribed;
   final bool recording,
       busy,
       sending,
@@ -95,7 +98,9 @@ class _VoiceExperienceState extends State<VoiceExperience> {
               ? 'Speak naturally. I’ll send when you pause.'
               : 'Speak naturally. Tap send when you’re done.'
         : widget.sending
-        ? 'Transcribing your words and preparing a reply…'
+        ? widget.transcribed
+              ? 'Got it. Writing a reply…'
+              : 'Transcribing your words…'
         : widget.speaking
         ? widget.handsFree
               ? 'I’ll start listening again when the reply finishes.'

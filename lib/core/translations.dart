@@ -4,6 +4,15 @@
 const Map<String, Map<String, String>> translations = {'pt': _pt, 'es': _es};
 
 const _pt = <String, String>{
+  // QA fixes: validation messages, price units, and the feminine "Todas" for
+  // notifications (the plain 'All' key stays masculine for contacts).
+  'Enter the contact code': 'Informe o código de contato',
+  'Enter a group name': 'Informe um nome para o grupo',
+  '/month': '/mês',
+  '/year': '/ano',
+  'notifications|All': 'Todas',
+  'Premium is managed in the App Store or Play Store.':
+      'O Premium é gerenciado na App Store ou na Play Store.',
   // --- brand and layout: shown as-is in every language ---------------------
   'AUROX ': 'AUROX ',
   'DAY': 'DAY',
@@ -758,6 +767,15 @@ const _pt = <String, String>{
 };
 
 const _es = <String, String>{
+  // QA fixes: validation messages and the translated price units. Spanish
+  // "notificaciones" is feminine too, so this filter also needs "Todas".
+  'Enter the contact code': 'Introduce el código de contacto',
+  'Enter a group name': 'Introduce un nombre para el grupo',
+  '/month': '/mes',
+  '/year': '/año',
+  'notifications|All': 'Todas',
+  'Premium is managed in the App Store or Play Store.':
+      'Premium se gestiona en la App Store o en Play Store.',
   // --- brand and layout: shown as-is in every language ---------------------
   'AUROX ': 'AUROX ',
   'DAY': 'DAY',

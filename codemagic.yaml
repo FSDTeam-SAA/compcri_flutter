@@ -1,0 +1,51 @@
+workflows:
+  ios-testflight:
+    name: Aurox Day - TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: Aurox Day
+    environment:
+      flutter: 3.38.7
+      xcode: latest
+      cocoapods: default
+      groups:
+        - aurox_day
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.auroxday.app
+    scripts:
+      - name: Validate backend configuration
+        script: |
+          set -eu
+          case "${API_BASE_URL:-}" in
+            https://*) ;;
+            *) echo "Set API_BASE_URL to the deployed HTTPS API in the aurox_day environment group."; exit 1 ;;
+          esac
+      - name: Install Flutter dependencies
+        script: flutter pub get
+      - name: Analyze Flutter code
+        script: flutter analyze
+      - name: Run Flutter tests
+        script: flutter test
+      - name: Install iOS dependencies
+        script: |
+          cd ios
+          pod install
+      - name: Apply signing profiles
+        script: xcode-project use-profiles
+      - name: Build signed IPA
+        script: |
+          set -eu
+          flutter build ipa --release \
+            --build-number="$((PROJECT_BUILD_NUMBER + 1))" \
+            --dart-define="API_BASE_URL=$API_BASE_URL" \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false

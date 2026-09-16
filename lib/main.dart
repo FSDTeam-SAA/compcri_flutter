@@ -120,7 +120,12 @@ Route<void> buildRoute(RouteSettings settings) {
   } else if (name == '/home') {
     page = const Dashboard();
   } else if (name == '/event/create' || name == '/event/edit') {
-    page = EventForm(event: arguments as CalendarEvent?);
+    // A String argument is a group id: the form was opened from inside a
+    // group and the new event should belong to it (QA F05).
+    page = EventForm(
+      event: arguments is CalendarEvent ? arguments : null,
+      groupId: arguments is String ? arguments : null,
+    );
   } else if (name == '/event') {
     page = EventDetails(event: arguments as CalendarEvent);
   } else if (name == '/event/share') {

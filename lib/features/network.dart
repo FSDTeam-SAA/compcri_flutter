@@ -27,6 +27,7 @@ class _NetworkTabState extends State<NetworkTab> {
   Future<void> _addContact() async {
     final store = StoreScope.read(context);
     final input = TextEditingController();
+    final form = GlobalKey<FormState>();
     var relation = 'Friend';
 
     final submitted = await showDialog<bool>(
@@ -35,7 +36,9 @@ class _NetworkTabState extends State<NetworkTab> {
         builder: (dialogContext, update) => AlertDialog(
           backgroundColor: Colors.white,
           title: const Text('Add Contact Code', style: TextStyle(fontSize: 17)),
-          content: Column(
+          content: Form(
+            key: form,
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -44,7 +47,14 @@ class _NetworkTabState extends State<NetworkTab> {
                 style: TextStyle(fontSize: 11, color: muted),
               ),
               const SizedBox(height: 12),
-              AppField('', hint: 'e.g. JOHN-456-FA', controller: input),
+              AppField(
+                '',
+                hint: 'e.g. JOHN-456-FA',
+                controller: input,
+                validator: (value) => (value ?? '').trim().isEmpty
+                    ? 'Enter the contact code'
+                    : null,
+              ),
               SelectField(
                 'Relation',
                 value: relation,
@@ -60,11 +70,14 @@ class _NetworkTabState extends State<NetworkTab> {
               PrimaryButton(
                 'Send request',
                 onPressed: () {
-                  if (input.text.trim().isEmpty) return;
+                  // Validating keeps the dialog open and shows why, instead
+                  // of the tap appearing to do nothing (QA F03).
+                  if (form.currentState?.validate() != true) return;
                   Navigator.pop(dialogContext, true);
                 },
               ),
             ],
+            ),
           ),
         ),
       ),
@@ -86,19 +99,34 @@ class _NetworkTabState extends State<NetworkTab> {
   Future<void> _createGroup() async {
     final store = StoreScope.read(context);
     final input = TextEditingController();
+    final form = GlobalKey<FormState>();
     final submitted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: Colors.white,
         title: const Text('New group', style: TextStyle(fontSize: 17)),
-        content: AppField('', hint: 'Group name', controller: input),
+        content: Form(
+          key: form,
+          child: AppField(
+            '',
+            hint: 'Group name',
+            controller: input,
+            validator: (value) =>
+                (value ?? '').trim().isEmpty ? 'Enter a group name' : null,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
+            // Validate before closing, so an empty name explains itself
+            // rather than dismissing the form silently (QA F04).
+            onPressed: () {
+              if (form.currentState?.validate() != true) return;
+              Navigator.pop(dialogContext, true);
+            },
             child: const Text('Create'),
           ),
         ],
@@ -459,6 +487,7 @@ class PersonTile extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 10),
         leading: Avatar(
           index: person.avatarIndex,
+          name: person.name,
           url: person.avatar?.secureUrl,
         ),
         title: Text(person.name, style: const TextStyle(fontSize: 14)),
@@ -517,6 +546,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
                         children: [
                           Avatar(
                             index: request.person.avatarIndex,
+                            name: request.person.name,
                             url: request.person.avatar?.secureUrl,
                           ),
                           const SizedBox(width: 12),
@@ -768,6 +798,7 @@ class _ContactDetailsState extends State<ContactDetails> {
                     Avatar(
                       index: contact.avatarIndex,
                       size: 54,
+                      name: contact.name,
                       url: contact.avatar?.secureUrl,
                     ),
                     const SizedBox(width: 14),
@@ -985,6 +1016,7 @@ class _GroupDetailsState extends State<GroupDetails> {
               (person) => ListTile(
                 leading: Avatar(
                   index: person.avatarIndex,
+                  name: person.name,
                   url: person.avatar?.secureUrl,
                 ),
                 title: Text(person.name),
@@ -1072,7 +1104,9 @@ class _GroupDetailsState extends State<GroupDetails> {
               const Spacer(),
               TextButton(
                 onPressed: () async {
-                  await go(context, '/event/create');
+                  // Carry the group through, or the event saves as personal
+                  // and this list stays empty (QA F05).
+                  await go(context, '/event/create', group.id);
                   if (mounted) await store.loadEvents(silent: true);
                 },
                 child: const Text('Add New +'),

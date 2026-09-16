@@ -257,6 +257,7 @@ class CalendarEvent {
     required this.endsAt,
     DateTime? occurrenceStartAt,
     DateTime? occurrenceEndAt,
+    DateTime? occurrenceOriginalStartAt,
     this.createdById = '',
     this.description = '',
     this.location = '',
@@ -274,7 +275,9 @@ class CalendarEvent {
     this.canDelete = true,
     this.canRespond = false,
   }) : occurrenceStartAt = occurrenceStartAt ?? startsAt,
-       occurrenceEndAt = occurrenceEndAt ?? endsAt;
+       occurrenceEndAt = occurrenceEndAt ?? endsAt,
+       occurrenceOriginalStartAt =
+           occurrenceOriginalStartAt ?? occurrenceStartAt ?? startsAt;
 
   final String id, calendarId, createdById;
   final String title, description, location, timeZone;
@@ -284,6 +287,12 @@ class CalendarEvent {
 
   /// The instant this particular row represents.
   final DateTime occurrenceStartAt, occurrenceEndAt;
+
+  /// The untouched recurrence slot this row was generated from. Equal to
+  /// [occurrenceStartAt] until the occurrence is moved, after which only this
+  /// value still identifies the date to the API. Always send it as
+  /// `originalStartAt` when editing or cancelling a single occurrence.
+  final DateTime occurrenceOriginalStartAt;
 
   final List<int> reminderMinutes;
   final String? recurrenceRrule, groupId;
@@ -337,6 +346,7 @@ class CalendarEvent {
       endsAt: endsAt,
       occurrenceStartAt: _date(json['occurrenceStartAt']) ?? startsAt,
       occurrenceEndAt: _date(json['occurrenceEndAt']) ?? endsAt,
+      occurrenceOriginalStartAt: _date(json['occurrenceOriginalStartAt']),
       reminderMinutes: reminders is List
           ? reminders.map((value) => (value as num).toInt()).toList()
           : const <int>[],
@@ -359,6 +369,9 @@ class CalendarEvent {
     bool clearCompletedAt = false,
     String? rsvpStatus,
     int? version,
+    DateTime? occurrenceStartAt,
+    DateTime? occurrenceEndAt,
+    DateTime? occurrenceOriginalStartAt,
   }) => CalendarEvent(
     id: id,
     calendarId: calendarId,
@@ -369,8 +382,10 @@ class CalendarEvent {
     timeZone: timeZone,
     startsAt: startsAt,
     endsAt: endsAt,
-    occurrenceStartAt: occurrenceStartAt,
-    occurrenceEndAt: occurrenceEndAt,
+    occurrenceStartAt: occurrenceStartAt ?? this.occurrenceStartAt,
+    occurrenceEndAt: occurrenceEndAt ?? this.occurrenceEndAt,
+    occurrenceOriginalStartAt:
+        occurrenceOriginalStartAt ?? this.occurrenceOriginalStartAt,
     reminderMinutes: reminderMinutes,
     recurrenceRrule: recurrenceRrule,
     poster: poster,

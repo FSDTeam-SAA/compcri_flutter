@@ -29,7 +29,7 @@ class ApiConfig {
   /// The deployed backend. For a local server, build with
   /// `--dart-define=API_BASE_URL=http://10.0.2.2:5000/api/v1` on the Android
   /// emulator or `http://localhost:5000/api/v1` elsewhere.
-  static String _defaultHost() => 'http://62.72.58.29:5005';
+  static String _defaultHost() => 'http://2.25.68.237';
 
   static String _stripSlash(String value) =>
       value.endsWith('/') ? value.substring(0, value.length - 1) : value;

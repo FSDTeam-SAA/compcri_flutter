@@ -130,6 +130,7 @@ class ProfileScreen extends StatelessWidget {
               leading: Avatar(
                 profile: true,
                 size: 48,
+                name: user?.name,
                 url: user?.avatar?.secureUrl,
               ),
               title: Text(user?.name ?? 'Your profile'),
@@ -409,6 +410,7 @@ class _ProfileFormState extends State<ProfileForm> {
                   Avatar(
                     profile: true,
                     size: 84,
+                    name: store.user?.name,
                     url: store.user?.avatar?.secureUrl,
                   ),
                   Positioned(
@@ -567,6 +569,7 @@ class ProfileSummary extends StatelessWidget {
             child: Avatar(
               profile: true,
               size: 84,
+              name: user?.name,
               url: user?.avatar?.secureUrl,
             ),
           ),
@@ -935,7 +938,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: _FilterChip(
-                    label: value ? 'Unread' : 'All',
+                    // "notificações" is feminine, so this filter needs
+                    // "Todas", not the "Todos" used for contacts (QA PT02).
+                    label: value ? 'Unread' : 'notifications|All',
                     // The unread tab carries the count so the badge in the
                     // header has an obvious home on this screen.
                     count: value ? unread : null,
@@ -1447,6 +1452,7 @@ class _AssistantFormState extends State<AssistantForm> {
               child: Avatar(
                 size: 110,
                 index: widget.delegation!.person.avatarIndex,
+                name: widget.delegation!.person.name,
                 url: widget.delegation!.person.avatar?.secureUrl,
               ),
             ),
@@ -1804,7 +1810,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               ),
             ),
             Text(
-              i == 2 ? '/year' : '/month',
+              // Hardcoded literals here left the price units in English on
+              // the Portuguese and Spanish pricing screens (QA PT01).
+              tr(i == 2 ? '/year' : '/month'),
               style: TextStyle(color: ink.withValues(alpha: .7), fontSize: 9),
             ),
           ],
@@ -1855,6 +1863,16 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   toast(context, 'This is your current plan.');
                   return;
                 }
+                // The free card is not something to buy; leaving it to fall
+                // through offered an annual Premium subscription while Free
+                // was selected (QA P05).
+                if (i == 0) {
+                  toast(
+                    context,
+                    'Premium is managed in the App Store or Play Store.',
+                  );
+                  return;
+                }
                 go(
                   context,
                   '/summary',
@@ -1864,6 +1882,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               child: Text(
                 isCurrent
                     ? 'Current Plan'
+                    : i == 0
+                    ? 'Free Plan'
                     : i == 1
                     ? 'Get Premium Monthly'
                     : 'Get Premium Yearly',

@@ -72,8 +72,17 @@ class I18n {
 
 /// [text] in the current language, with `{name}` placeholders filled in from
 /// [args].
+///
+/// A key may be written as `context|Text` when one English word needs
+/// different translations in different places — "All" is masculine for
+/// contacts but feminine for notifications in Portuguese. Only the full key is
+/// looked up; English falls back to the part after the bar, so the source
+/// language is unaffected.
 String tr(String text, [Map<String, Object?> args = const {}]) {
-  var result = translations[I18n.locale]?[text] ?? text;
+  final bar = text.indexOf('|');
+  var result =
+      translations[I18n.locale]?[text] ??
+      (bar == -1 ? text : text.substring(bar + 1));
   args.forEach((key, value) => result = result.replaceAll('{$key}', '$value'));
   return result;
 }

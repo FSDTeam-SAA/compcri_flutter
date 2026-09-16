@@ -813,13 +813,17 @@ class Avatar extends StatelessWidget {
     this.size = 42,
     this.profile = false,
     this.url,
+    this.name,
   });
   final int index;
   final double size;
   final bool profile;
 
-  /// Uploaded avatar. Falls back to the bundled placeholder when absent.
+  /// Uploaded avatar. Falls back to the initials placeholder when absent.
   final String? url;
+
+  /// Whose avatar this is, used for the initials placeholder.
+  final String? name;
 
   @override
   Widget build(BuildContext context) {
@@ -840,14 +844,55 @@ class Avatar extends StatelessWidget {
     return ClipOval(child: _placeholder());
   }
 
-  Widget _placeholder() => ReferenceArt(
-    profile ? 'Main profile.png' : 'Contact and Group.png',
-    profile
-        ? const Rect.fromLTWH(151, 100, 86, 86)
-        : Rect.fromLTWH(29, 308 + (index % 6) * 74, 48, 48),
-    width: size,
-    height: size,
-  );
+  /// Initials on a tinted disc.
+  ///
+  /// This used to crop a face out of the bundled reference art, and picked a
+  /// different sheet on the profile screen than in member lists — so one
+  /// account appeared as two different people (QA P06). Initials are neutral
+  /// and identical wherever the same person is shown.
+  Widget _placeholder() {
+    final letters = _initials(name);
+    final tint = _tints[(letters.isEmpty ? index : letters.codeUnitAt(0)) %
+        _tints.length];
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      color: tint,
+      child: letters.isEmpty
+          ? Icon(Icons.person, size: size * .55, color: Colors.white)
+          : Text(
+              letters,
+              style: TextStyle(
+                fontSize: size * .38,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+    );
+  }
+
+  static const _tints = [
+    Color(0xff7c5cd6),
+    Color(0xff4f7fd4),
+    Color(0xff3fa89a),
+    Color(0xffd08a3e),
+    Color(0xffc2607f),
+    Color(0xff6b73c4),
+  ];
+
+  /// Up to two initials from the first and last word of [value].
+  static String _initials(String? value) {
+    final words = (value ?? '')
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    if (words.isEmpty) return '';
+    final first = words.first.characters.first.toUpperCase();
+    if (words.length == 1) return first;
+    return first + words.last.characters.first.toUpperCase();
+  }
 }
 
 class Surface extends StatelessWidget {

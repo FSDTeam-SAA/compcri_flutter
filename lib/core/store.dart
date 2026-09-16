@@ -351,6 +351,7 @@ class AppStore extends ChangeNotifier {
     String? recurrenceRrule,
     List<int> reminderMinutes = const <int>[],
     bool overrideConflicts = false,
+    String? groupId,
   }) async {
     final result = await api.events.create(
       calendarId: calendarId,
@@ -364,6 +365,9 @@ class AppStore extends ChangeNotifier {
       reminderMinutes: reminderMinutes,
       timeZone: calendar?.timeZone ?? DeviceTimeZone.current,
       overrideConflicts: overrideConflicts,
+      // Set when the event is being created from inside a group, so it is
+      // stored as a group event instead of a personal one (QA F05).
+      groupId: groupId,
     );
     await loadEvents(anchor: startsAt, silent: true);
     return result;
@@ -411,7 +415,10 @@ class AppStore extends ChangeNotifier {
   }) async {
     final result = await api.events.setRecurrenceException(
       eventId: event.id,
-      originalStartAt: event.occurrenceStartAt,
+      // Must be the untouched recurrence slot, not the moved time: an
+      // occurrence that already carries an override no longer matches its
+      // own occurrenceStartAt on the server.
+      originalStartAt: event.occurrenceOriginalStartAt,
       version: event.version,
       title: title,
       description: description ?? '',
@@ -428,7 +435,9 @@ class AppStore extends ChangeNotifier {
   Future<void> cancelOccurrence(CalendarEvent event) async {
     await api.events.setRecurrenceException(
       eventId: event.id,
-      originalStartAt: event.occurrenceStartAt,
+      // See updateOccurrence: sending occurrenceStartAt here is what made
+      // "delete this event" cancel the series origin instead (QA F08).
+      originalStartAt: event.occurrenceOriginalStartAt,
       version: event.version,
       cancelled: true,
     );
@@ -442,11 +451,27 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<void> setEventCompleted(CalendarEvent event, bool completed) async {
-    final updated = await api.events.setCompleted(
-      eventId: event.id,
-      completed: completed,
-      version: event.version,
-    );
+    CalendarEvent updated;
+    try {
+      updated = await api.events.setCompleted(
+        eventId: event.id,
+        completed: completed,
+        version: event.version,
+      );
+    } on ApiException catch (error) {
+      // The cached __v goes stale as soon as anything else edits the event —
+      // saving a note, for instance — and the retry then failed with an alarm
+      // even though the tap was valid (QA P04). Re-read and apply once.
+      if (!error.isVersionConflict) rethrow;
+      final fresh = await api.events.get(event.id);
+      updated = fresh.completed == completed
+          ? fresh
+          : await api.events.setCompleted(
+              eventId: event.id,
+              completed: completed,
+              version: fresh.version,
+            );
+    }
     // The endpoint returns the stored document, which carries no expanded
     // occurrence. Keep this row's occurrence times so a recurring event does
     // not jump back to the start of its series.

@@ -135,6 +135,7 @@ class HomeTab extends StatelessWidget {
                   child: Avatar(
                     profile: true,
                     size: 44,
+                    name: store.user?.name,
                     url: store.user?.avatar?.secureUrl,
                   ),
                 ),

@@ -171,9 +171,13 @@ class EventTile extends StatelessWidget {
 enum _EditScope { occurrence, series }
 
 class EventForm extends StatefulWidget {
-  const EventForm({super.key, this.event, this.initialStart});
+  const EventForm({super.key, this.event, this.initialStart, this.groupId});
   final DateTime? initialStart;
   final CalendarEvent? event;
+
+  /// Set when the form was opened from inside a group, so the new event is
+  /// saved as a group event rather than a personal one (QA F05).
+  final String? groupId;
   @override
   State<EventForm> createState() => _EventFormState();
 }
@@ -411,6 +415,7 @@ class _EventFormState extends State<EventForm> {
               recurrenceRrule: CalendarEvent.rruleForLabel(repeat),
               reminderMinutes: CalendarEvent.minutesForLabel(reminder),
               overrideConflicts: overrideConflicts,
+              groupId: widget.groupId,
             )
           : event.isRecurring && !seriesEdit
           ? store.updateOccurrence(
@@ -703,12 +708,38 @@ class _EventDetailsState extends State<EventDetails> {
     final store = StoreScope.read(context);
     try {
       final fresh = await store.api.events.get(widget.event.id);
-      if (mounted) setState(() => event = fresh);
+      // The endpoint returns the stored series, which carries no expanded
+      // occurrence, so its occurrence fields collapse onto the series anchor.
+      // Keep the occurrence this screen was opened for, or details and every
+      // single-occurrence edit would silently act on the first date (QA F07).
+      if (mounted) setState(() => event = _mergeOccurrence(fresh, store));
     } on ApiException catch (error) {
       if (mounted && !error.isNetworkError) toastError(context, error.message);
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  /// Restores the occurrence identity that `GET /events/:id` cannot carry.
+  ///
+  /// The recurrence slot this screen was opened for never changes, even when
+  /// the occurrence is moved, so it is the reliable key: prefer the freshly
+  /// expanded row the store holds for that slot, and fall back to the times
+  /// already on screen when the store has not loaded that window.
+  CalendarEvent _mergeOccurrence(CalendarEvent fresh, AppStore store) {
+    if (!fresh.isRecurring) return fresh;
+    final slot = event.occurrenceOriginalStartAt;
+    final expanded = store.events.where(
+      (item) =>
+          item.id == fresh.id &&
+          item.occurrenceOriginalStartAt.isAtSameMomentAs(slot),
+    );
+    final row = expanded.isEmpty ? null : expanded.first;
+    return fresh.copyWith(
+      occurrenceStartAt: row?.occurrenceStartAt ?? event.occurrenceStartAt,
+      occurrenceEndAt: row?.occurrenceEndAt ?? event.occurrenceEndAt,
+      occurrenceOriginalStartAt: slot,
+    );
   }
 
   /// A repeating event can be cancelled for this date only, or ended entirely.
@@ -822,7 +853,17 @@ class _EventDetailsState extends State<EventDetails> {
             (Icons.calendar_month_outlined, formatDay(event.occurrenceStartAt)),
             (
               Icons.schedule,
-              '${event.start.format(context)} – ${event.end.format(context)}',
+              // An event running past midnight ends on a different date, and
+              // showing "09:00 – 07:00" under one date reads as an error.
+              // Name the end date when it differs (QA P03).
+              DateUtils.isSameDay(
+                    event.occurrenceStartAt,
+                    event.occurrenceEndAt,
+                  )
+                  ? '${event.start.format(context)} – ${event.end.format(context)}'
+                  : '${event.start.format(context)} → '
+                        '${formatDay(event.occurrenceEndAt)}, '
+                        '${event.end.format(context)}',
             ),
             (
               Icons.location_on_outlined,
@@ -1160,6 +1201,7 @@ class _ShareEventScreenState extends State<ShareEventScreen> {
                         : person.relation,
                     leading: Avatar(
                       index: person.avatarIndex,
+                      name: person.name,
                       url: person.avatar?.secureUrl,
                     ),
                   ),

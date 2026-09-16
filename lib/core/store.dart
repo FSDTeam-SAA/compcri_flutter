@@ -152,6 +152,29 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
     unawaited(_loadCalendars());
     unawaited(loadSubscription());
+    unawaited(_syncCalendarTimeZone());
+  }
+
+  /// Keeps the calendar on the phone's time zone.
+  ///
+  /// Events are stored against the calendar's zone, and nothing in the app
+  /// lets the user change it, so a calendar created while travelling — or
+  /// before a move — silently schedules everything in the wrong zone. Adopt
+  /// the device zone whenever it differs rather than asking anyone to pick.
+  Future<void> _syncCalendarTimeZone() async {
+    final current = calendar;
+    final device = DeviceTimeZone.current;
+    if (current == null || device.isEmpty || current.timeZone == device) return;
+    try {
+      await api.events.updateSettings(current.id, {'timeZone': device});
+      final me = await api.users.me();
+      calendar = me.calendar;
+      if (calendar != null) calendars = [calendar!];
+      notifyListeners();
+      await loadEvents(silent: true);
+    } on ApiException {
+      // Not worth interrupting anyone for; the stored zone still applies.
+    }
   }
 
   Future<void> _loadCalendars() async {

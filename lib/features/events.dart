@@ -495,7 +495,6 @@ class _EventFormState extends State<EventForm> {
 
   @override
   Widget build(BuildContext context) {
-    final store = StoreScope.of(context);
     final hasPoster =
         !posterCleared && (posterUrl != null || posterMediaId != null);
     return PageFrame(
@@ -576,37 +575,22 @@ class _EventFormState extends State<EventForm> {
               validator: (v) =>
                   v == null || v.trim().isEmpty ? 'Enter an event title' : null,
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: picker(
-                    'Date',
-                    formatDay(date),
-                    Icons.calendar_month_outlined,
-                    () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: date,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2040),
-                      );
-                      if (picked != null) _changeTime(() => date = picked);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: picker(
-                    'Time zone',
-                    store.calendar?.timeZone ?? DeviceTimeZone.current,
-                    Icons.public,
-                    () => toast(
-                      context,
-                      'Events use your calendar time zone. Change it in calendar settings.',
-                    ),
-                  ),
-                ),
-              ],
+            // No time zone picker: the calendar follows the phone's zone
+            // automatically, so offering a field nobody could change only
+            // invited doubt about which zone an event was saved in.
+            picker(
+              'Date',
+              formatDay(date),
+              Icons.calendar_month_outlined,
+              () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: date,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime(2040),
+                );
+                if (picked != null) _changeTime(() => date = picked);
+              },
             ),
             Row(
               children: [

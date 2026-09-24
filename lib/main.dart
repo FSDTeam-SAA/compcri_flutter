@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'core/design.dart';
 import 'core/i18n.dart';
+import 'core/push.dart';
 import 'core/store.dart';
 import 'features/auth.dart';
 import 'features/dashboard.dart';
@@ -17,6 +18,9 @@ Future<void> main() async {
   // language itself, so the first frame is already in the right one.
   await initializeDateFormatting();
   await I18n.restore();
+  // Optional: a build without the Firebase config files still runs, it just
+  // keeps notifications inside the app.
+  await PushMessaging.instance.enable();
   runApp(const MyApp());
 }
 

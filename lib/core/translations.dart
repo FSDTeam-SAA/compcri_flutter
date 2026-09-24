@@ -182,6 +182,7 @@ const _pt = <String, String>{
   'Google sign-in needs an OAuth client ID in the app and GOOGLE_CLIENT_IDS on the server.':
       'O login com Google precisa de um OAuth client ID no app e de GOOGLE_CLIENT_IDS no servidor.',
   'Google': 'Google',
+  'Apple': 'Apple',
   "Don't have an account?": 'Não tem uma conta?',
   'Already have an account?': 'Já tem uma conta?',
   'Remember Password?': 'Lembrou a senha?',
@@ -947,6 +948,7 @@ const _es = <String, String>{
   'Google sign-in needs an OAuth client ID in the app and GOOGLE_CLIENT_IDS on the server.':
       'El inicio de sesión con Google necesita un OAuth client ID en la app y GOOGLE_CLIENT_IDS en el servidor.',
   'Google': 'Google',
+  'Apple': 'Apple',
   "Don't have an account?": '¿No tienes una cuenta?',
   'Already have an account?': '¿Ya tienes una cuenta?',
   'Remember Password?': '¿Recordaste tu contraseña?',

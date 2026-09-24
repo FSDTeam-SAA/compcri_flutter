@@ -106,6 +106,31 @@ class AuthApi {
         ),
       );
 
+  Future<AuthResult> apple({
+    required String identityToken,
+    String? fullName,
+    String? termsVersion,
+    String? privacyVersion,
+  }) async => AuthResult.fromJson(
+    _map(
+      await _client.post(
+        '/auth/apple',
+        auth: false,
+        body: {
+          'identityToken': identityToken,
+          'fullName': ?fullName,
+          'timeZone': DeviceTimeZone.current,
+          'locale': I18n.locale,
+          if (termsVersion != null) ...{
+            'termsVersion': termsVersion,
+            'termsAccepted': true,
+          },
+          'privacyVersion': ?privacyVersion,
+        },
+      ),
+    ),
+  );
+
   Future<AuthResult> google({
     required String idToken,
     String? termsVersion,

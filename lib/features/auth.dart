@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
+import 'dart:io';
+
 import '../core/api_client.dart';
+import '../core/federated_auth.dart';
 import '../core/design.dart';
 import '../core/store.dart';
 import '../core/i18n.dart';
@@ -141,6 +144,49 @@ class _AuthScreenState extends State<AuthScreen> {
         context,
         () => store.signIn(email.text.trim(), password.text),
         onError: _onSignInError,
+      );
+      if (ok && mounted) home(context);
+    });
+  }
+
+  /// Google and Apple both end in the same place: a provider token the API
+  /// exchanges for a session. A dismissed sheet returns null and is ignored.
+  Future<void> _signInWithGoogle() async {
+    final store = StoreScope.of(context);
+    await _guard(() async {
+      final String? token;
+      try {
+        token = await FederatedAuth.googleIdToken();
+      } on FederatedAuthException catch (error) {
+        if (mounted) toastError(context, error.message);
+        return;
+      }
+      if (token == null || !mounted) return;
+      final ok = await runAction(
+        context,
+        () => store.signInWithGoogle(token!),
+      );
+      if (ok && mounted) home(context);
+    });
+  }
+
+  Future<void> _signInWithApple() async {
+    final store = StoreScope.of(context);
+    await _guard(() async {
+      final AppleIdentity? identity;
+      try {
+        identity = await FederatedAuth.apple();
+      } on FederatedAuthException catch (error) {
+        if (mounted) toastError(context, error.message);
+        return;
+      }
+      if (identity == null || !mounted) return;
+      final ok = await runAction(
+        context,
+        () => store.signInWithApple(
+          identityToken: identity!.identityToken,
+          fullName: identity.fullName,
+        ),
       );
       if (ok && mounted) home(context);
     });
@@ -553,10 +599,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   foregroundColor: Colors.black,
                   minimumSize: const Size.fromHeight(48),
                 ),
-                onPressed: () => toast(
-                  context,
-                  'Google sign-in needs an OAuth client ID in the app and GOOGLE_CLIENT_IDS on the server.',
-                ),
+                onPressed: busy ? null : _signInWithGoogle,
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -573,6 +616,30 @@ class _AuthScreenState extends State<AuthScreen> {
                   ],
                 ),
               ),
+              // App Review guideline 4.8: an app offering a third-party login
+              // has to offer Sign in with Apple beside it on Apple platforms.
+              if (Platform.isIOS || Platform.isMacOS) ...[
+                const SizedBox(height: 12),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  onPressed: busy ? null : _signInWithApple,
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.apple, size: 26, color: Colors.white),
+                      SizedBox(width: 10),
+                      Text(
+                        'Apple',
+                        style: TextStyle(fontSize: 17, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 18),
             ],
             if (!otp)

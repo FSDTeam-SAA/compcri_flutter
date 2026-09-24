@@ -5,6 +5,7 @@ import 'api_client.dart';
 import 'config.dart';
 import 'i18n.dart';
 import 'models.dart';
+import 'push.dart';
 import 'time.dart';
 
 export 'models.dart';
@@ -113,6 +114,7 @@ class AppStore extends ChangeNotifier {
       try {
         await loadProfile();
         await Future.wait([loadEvents(), loadNetwork(), loadNotifications()]);
+        unawaited(PushMessaging.instance.start(this));
       } on ApiException {
         // A stale or rejected session drops the user back to sign-in.
         await signOut(callServer: false);
@@ -208,6 +210,7 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
     await loadProfile();
     await Future.wait([loadEvents(), loadNetwork(), loadNotifications()]);
+    unawaited(PushMessaging.instance.start(this));
   }
 
   Future<void> signIn(String email, String password) async =>
@@ -235,10 +238,23 @@ class AppStore extends ChangeNotifier {
     ),
   );
 
+  Future<void> signInWithApple({
+    required String identityToken,
+    String? fullName,
+  }) async => _adopt(
+    await api.auth.apple(
+      identityToken: identityToken,
+      fullName: fullName,
+      termsVersion: termsVersion,
+      privacyVersion: privacyVersion,
+    ),
+  );
+
   Future<void> restoreDeletedAccount(String email, String password) async =>
       _adopt(await api.auth.cancelDeletion(email, password));
 
   Future<void> signOut({bool callServer = true}) async {
+    await PushMessaging.instance.stop(api);
     final refreshToken = api.client.session?.refreshToken;
     if (callServer && refreshToken != null) {
       try {

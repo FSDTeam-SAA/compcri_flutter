@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>63352646426-u95p49vkf48gdipn750bag3s5oh6vv8j.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.63352646426-u95p49vkf48gdipn750bag3s5oh6vv8j</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>63352646426-dhv157r05duifl04io1svbmop8j9rlgj.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyBsDB1PSGxnfqBrWxoLdxPGqwgu5qHcwL0</string>
+	<key>GCM_SENDER_ID</key>
+	<string>63352646426</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.auroxday.app</string>
+	<key>PROJECT_ID</key>
+	<string>aurox-day</string>
+	<key>STORAGE_BUCKET</key>
+	<string>aurox-day.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:63352646426:ios:b2052e70069a3d769f5aa3</string>
+</dict>
+</plist>

@@ -913,7 +913,9 @@ class Surface extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       border: Border.all(color: const Color(0xfff0eafa)),
     ),
-    child: child,
+    // A tile inside the card paints its ink on the nearest Material, which
+    // would otherwise be behind this decoration and invisible.
+    child: Material(type: MaterialType.transparency, child: child),
   );
 }
 

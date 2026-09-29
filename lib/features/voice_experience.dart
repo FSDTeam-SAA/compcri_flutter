@@ -401,10 +401,13 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                     ),
                   ],
                 )
-              else if (typing && !widget.recording)
+              else if (typing)
                 TextField(
                   controller: widget.controller,
-                  enabled: !disabled,
+                  // Kept on screen through a recording: hands-free holds the
+                  // microphone open between turns, so hiding the field there
+                  // took the keyboard away for the whole call.
+                  enabled: !widget.sending,
                   minLines: 1,
                   maxLines: 3,
                   textInputAction: TextInputAction.send,
@@ -413,7 +416,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                     hintText: tr('Type your message…'),
                     suffixIcon: IconButton(
                       tooltip: tr('Send message'),
-                      onPressed: disabled
+                      onPressed: widget.sending
                           ? null
                           : () => widget.onSend(widget.controller.text),
                       icon: const Icon(
@@ -423,7 +426,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                     ),
                   ),
                 ),
-              if (typing && !widget.recording) const SizedBox(height: 10),
+              if (typing) const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -560,8 +563,12 @@ class _CallChip extends StatelessWidget {
               Flexible(
                 child: Text(
                   label,
-                  maxLines: 1,
+                  // Two lines, because these are translated: "Hands-free off"
+                  // becomes "Mãos livres desativado", which loses its ending to
+                  // an ellipsis in the width one line leaves here.
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,

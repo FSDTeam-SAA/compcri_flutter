@@ -670,6 +670,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
     return conversation.id;
   }
 
+  /// Sending something typed while a voice turn is open. The microphone wins
+  /// nothing here: choosing the keyboard ends the spoken turn — and leaves
+  /// hands-free off, since reopening the microphone over someone who has just
+  /// decided to type is what made the mode feel stuck.
+  Future<void> _sendTyped(String value) async {
+    if (value.trim().isEmpty || sending) return;
+    if (handsFree) {
+      await _setHandsFree(false);
+    } else if (recording) {
+      await _cancelRecording();
+    }
+    if (!mounted) return;
+    await _send(value);
+  }
+
   Future<void> _send(String value) async {
     final text = value.trim();
     if (text.isEmpty ||
@@ -1484,7 +1499,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   unawaited(_replay());
                 }
               },
-              onSend: _send,
+              onSend: _sendTyped,
               messages: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1633,8 +1648,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
                 child: TextField(
                   controller: input,
-                  enabled: !sending && !recording && !recorderBusy,
-                  onSubmitted: _send,
+                  // Typing stays open while the microphone is, because
+                  // hands-free reopens it after every reply: locking the field
+                  // on `recording` left the whole screen unusable until the
+                  // user backed out of it.
+                  enabled: !sending,
+                  onSubmitted: _sendTyped,
                   decoration: InputDecoration(
                     hintText: tr('Ask anything'),
                     suffixIcon: Row(
@@ -1653,9 +1672,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                         ),
                         IconButton(
                           tooltip: tr('Send message'),
-                          onPressed: sending || recording || recorderBusy
-                              ? null
-                              : () => _send(input.text),
+                          onPressed: sending ? null : () => _sendTyped(input.text),
                           icon: const Icon(
                             Icons.arrow_upward,
                             color: purple,

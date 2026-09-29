@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Firebase creates this channel on first use; the id is what the
+         manifest points every incoming reminder at. -->
+    <string name="reminder_channel_id">aurox_reminders</string>
+</resources>

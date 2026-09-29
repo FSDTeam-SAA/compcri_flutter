@@ -191,7 +191,11 @@ class _EventFormState extends State<EventForm> {
   DateTime date = DateTime.now();
   TimeOfDay start = const TimeOfDay(hour: 9, minute: 0),
       end = const TimeOfDay(hour: 10, minute: 0);
-  String reminder = 'None', repeat = 'Never';
+  // A new event reminds by default. Left on 'None', an event people expected
+  // to be reminded about simply passed in silence, which reads as push being
+  // broken rather than as a field they never opened. Editing an existing event
+  // still loads whatever it was saved with.
+  String reminder = '10 Minutes', repeat = 'Never';
 
   /// Newly uploaded poster id, or the existing one when unchanged.
   String? posterMediaId;
@@ -252,9 +256,34 @@ class _EventFormState extends State<EventForm> {
     return (startsAt, endsAt);
   }
 
+  static int _minutesOf(TimeOfDay time) => time.hour * 60 + time.minute;
+
+  /// Keeps the end after the start.
+  ///
+  /// Moving the start past the end used to leave the form holding a range the
+  /// server rejects — "Event end must be after its start" — on every save, with
+  /// nothing on screen pointing at the end field. Dragging the end along keeps
+  /// the length the event already had, which is what moving an appointment
+  /// normally means.
+  void _keepRangeOrdered(int startBefore, int endBefore) {
+    if (_minutesOf(end) > _minutesOf(start)) return;
+    final length = endBefore - startBefore;
+    final shifted = _minutesOf(start) + (length > 0 ? length : 60);
+    // A start late enough to push the end past midnight parks it at 23:59
+    // rather than wrapping it around to an earlier time.
+    end = shifted >= 24 * 60
+        ? const TimeOfDay(hour: 23, minute: 59)
+        : TimeOfDay(hour: shifted ~/ 60, minute: shifted % 60);
+  }
+
   /// Applies a date or time change and re-checks it once picking settles.
   void _changeTime(VoidCallback change) {
-    setState(change);
+    final startBefore = _minutesOf(start);
+    final endBefore = _minutesOf(end);
+    setState(() {
+      change();
+      _keepRangeOrdered(startBefore, endBefore);
+    });
     _conflictDebounce?.cancel();
     setState(() => checkingConflicts = true);
     _conflictDebounce = Timer(

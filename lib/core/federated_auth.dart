@@ -53,9 +53,6 @@ class FederatedAuth {
       }
       return token;
     } on GoogleSignInException catch (error) {
-      // ignore: avoid_print
-      print('GOOGLE_DEBUG code=${error.code} desc=${error.description} '
-          'details=${error.details}');
       if (error.code == GoogleSignInExceptionCode.canceled) return null;
       // An unregistered signing certificate fails here rather than on the
       // account sheet, so the code is worth showing: without it the button

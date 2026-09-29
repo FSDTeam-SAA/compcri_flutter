@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "63352646426-k6361jjk53di0m3r0qe46533megr151s.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.auroxday.app",
+            "certificate_hash": "ac9b8fa40ebdd3ef67a2a21b104380680c9c11bd"
+          }
+        },
+        {
           "client_id": "63352646426-mlmi4cgkbhv50q6koq71lii0o7dhbgqj.apps.googleusercontent.com",
           "client_type": 3
         }

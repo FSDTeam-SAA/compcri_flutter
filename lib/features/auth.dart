@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
+import 'dart:async';
 import 'dart:io';
 
 import '../core/api_client.dart';
@@ -36,24 +37,65 @@ class _SplashScreenState extends State<SplashScreen> {
     });
   }
 
+  /// Repeats the native launch screen exactly — same logo, same 96 logical
+  /// pixels, same white — so the hand-off from Android/iOS to Flutter is
+  /// invisible and the user sees one splash rather than two.
   @override
-  Widget build(BuildContext context) => const Backdrop(
-    auth: true,
-    child: Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Brand(wordmark: true, size: 64),
-            SizedBox(height: 40),
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2.4),
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.white,
+    // Without the expand the stack shrinks to the logo and parks it in the
+    // top-left corner instead of the middle of the screen.
+    body: SizedBox.expand(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Image.asset(
+            'assets/icon/splash_logo.png',
+            width: 96,
+            filterQuality: FilterQuality.medium,
+          ),
+          // A session restore slow enough to outlast the splash shows this.
+          const Positioned(
+            bottom: 96,
+            child: _DelayedSpinner(delay: Duration(milliseconds: 1200)),
+          ),
+        ],
       ),
+    ),
+  );
+}
+
+class _DelayedSpinner extends StatefulWidget {
+  const _DelayedSpinner({required this.delay});
+  final Duration delay;
+  @override
+  State<_DelayedSpinner> createState() => _DelayedSpinnerState();
+}
+
+class _DelayedSpinnerState extends State<_DelayedSpinner> {
+  bool visible = false;
+  late final Timer timer;
+
+  @override
+  void initState() {
+    super.initState();
+    timer = Timer(widget.delay, () => setState(() => visible = true));
+  }
+
+  @override
+  void dispose() {
+    timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedOpacity(
+    opacity: visible ? 1 : 0,
+    duration: const Duration(milliseconds: 300),
+    child: const SizedBox(
+      width: 22,
+      height: 22,
+      child: CircularProgressIndicator(strokeWidth: 2.2),
     ),
   );
 }
@@ -653,7 +695,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           : signup
                           ? 'Already have an account?'
                           : 'Remember Password?',
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 11),
                     ),

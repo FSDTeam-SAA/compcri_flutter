@@ -125,9 +125,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 final slide = slides[index];
                 return LayoutBuilder(
                   builder: (context, bounds) {
+                    // The artwork yields height to the words. Translations run
+                    // longer than the English these proportions were set
+                    // against — in Portuguese the closing chip fell below the
+                    // fold, which reads as a cut-off layout rather than as
+                    // something to scroll to.
                     final artSize = math
-                        .min(bounds.maxWidth, bounds.maxHeight * .59)
-                        .clamp(180.0, 420.0);
+                        .min(bounds.maxWidth, bounds.maxHeight * .48)
+                        .clamp(160.0, 360.0);
                     return SingleChildScrollView(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Column(

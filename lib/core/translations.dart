@@ -359,7 +359,7 @@ const _pt = <String, String>{
   'Working…': 'Processando…',
   'One moment': 'Um momento',
   'Tap to talk': 'Toque para falar',
-  'Pause listening': 'Pausar escuta',
+  'Pause': 'Pausar',
   'Enable spoken replies': 'Ativar respostas faladas',
   'Mute spoken replies': 'Silenciar respostas faladas',
 
@@ -1136,7 +1136,7 @@ const _es = <String, String>{
   'Working…': 'Procesando…',
   'One moment': 'Un momento',
   'Tap to talk': 'Toca para hablar',
-  'Pause listening': 'Pausar escucha',
+  'Pause': 'Pausar',
   'Enable spoken replies': 'Activar respuestas habladas',
   'Mute spoken replies': 'Silenciar respuestas habladas',
 

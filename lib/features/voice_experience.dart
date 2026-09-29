@@ -470,9 +470,15 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                                 ),
                               )
                             : Icon(
-                                widget.recording
-                                    ? Icons.arrow_upward_rounded
-                                    : Icons.mic_rounded,
+                                !widget.recording
+                                    ? Icons.mic_rounded
+                                    // Hands-free sends on a pause by itself, so
+                                    // pressing this stops it listening rather
+                                    // than sending — an arrow would promise
+                                    // the wrong thing.
+                                    : widget.handsFree
+                                    ? Icons.pause_rounded
+                                    : Icons.arrow_upward_rounded,
                               ),
                         label: Text(
                           widget.sending
@@ -480,12 +486,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                               : widget.busy
                               ? 'One moment'
                               : widget.recording
-                              // Hands-free sends on a pause by itself, so the
-                              // button is how you stop it listening rather
-                              // than how you send.
-                              ? (widget.handsFree
-                                    ? 'Pause listening'
-                                    : 'Send')
+                              ? (widget.handsFree ? 'Pause' : 'Send')
                               : 'Tap to talk',
                         ),
                       ),

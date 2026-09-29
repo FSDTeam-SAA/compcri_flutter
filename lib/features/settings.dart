@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:intl/intl.dart';
+import 'package:purchases_flutter/purchases_flutter.dart' show Package;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
 import '../core/design.dart';
+import '../core/purchases.dart';
 import '../core/store.dart';
 import '../core/time.dart';
 import 'events.dart';
@@ -1925,17 +1927,94 @@ class PlanClipper extends CustomClipper<Path> {
   bool shouldReclip(PlanClipper oldClipper) => false;
 }
 
-/// Purchases run through the App Store / Play Store via RevenueCat, so this
-/// screen explains the hand-off and reconciles entitlements afterwards.
-class SummaryScreen extends StatelessWidget {
+/// Purchases run through the App Store / Play Store via RevenueCat.
+///
+/// The price shown here is the store's own, in the viewer's currency, so it
+/// stays right in every country without a table of our own. Where no store is
+/// configured — a platform without a key, or a build under test — the screen
+/// falls back to the printed price and the manual refresh it used before.
+class SummaryScreen extends StatefulWidget {
   const SummaryScreen({super.key, required this.plan});
   final String plan;
 
   @override
+  State<SummaryScreen> createState() => _SummaryScreenState();
+}
+
+class _SummaryScreenState extends State<SummaryScreen> {
+  Package? package;
+  bool loading = true;
+
+  bool get yearly => widget.plan == 'Premium Yearly';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOffering();
+  }
+
+  Future<void> _loadOffering() async {
+    final offering = await StorePurchases.instance.offering();
+    if (!mounted) return;
+    setState(() {
+      package = yearly ? offering?.annual : offering?.monthly;
+      loading = false;
+    });
+  }
+
+  /// Pulls the account back in step with the store, so premium gates open on
+  /// the same tap that finished the purchase.
+  Future<void> _refreshAccount(AppStore store) async {
+    await store.api.subscriptions.reconcile();
+    await store.loadSubscription();
+    await store.loadProfile();
+  }
+
+  Future<void> _buy(AppStore store) async {
+    final chosen = package;
+    if (chosen == null) return;
+    try {
+      final bought = await StorePurchases.instance.buy(chosen);
+      if (!mounted) return;
+      if (!bought) return; // The sheet was dismissed; nothing to report.
+      await _refreshAccount(store);
+      if (!mounted) return;
+      toast(context, 'Welcome to Premium.');
+      Navigator.pop(context);
+    } on PurchaseException catch (error) {
+      if (mounted) toastError(context, error.message);
+    } on ApiException catch (error) {
+      // The purchase went through; only our side failed to catch up.
+      if (mounted) toastError(context, error.message);
+    }
+  }
+
+  Future<void> _restore(AppStore store) async {
+    try {
+      final found = await StorePurchases.instance.restore();
+      if (!mounted) return;
+      if (!found) {
+        toast(context, 'No previous purchase was found for this account.');
+        return;
+      }
+      await _refreshAccount(store);
+      if (!mounted) return;
+      toast(context, 'Your subscription is back.');
+      Navigator.pop(context);
+    } on PurchaseException catch (error) {
+      if (mounted) toastError(context, error.message);
+    } on ApiException catch (error) {
+      if (mounted) toastError(context, error.message);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
-    final yearly = plan == 'Premium Yearly';
-    final price = yearly ? r'$79.99 / year' : r'$8.99 / month';
+    final plan = widget.plan;
+    final price =
+        package?.storeProduct.priceString ??
+        (yearly ? r'$79.99 / year' : r'$8.99 / month');
 
     return PageFrame(
       title: 'Summary',
@@ -1975,32 +2054,53 @@ class SummaryScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          const Surface(
-            color: Color(0xffe2edff),
+          Surface(
+            color: const Color(0xffe2edff),
             child: Text(
-              'Premium is billed by the App Store or Play Store. Complete the purchase there, then tap Refresh below and your account unlocks automatically.',
-              style: TextStyle(fontSize: 12, color: muted, height: 1.4),
+              'Premium is billed by the App Store or Play Store. Cancel any time from there; the trial only charges you once it ends.',
+              style: const TextStyle(fontSize: 12, color: muted, height: 1.4),
             ),
           ),
           const SizedBox(height: 18),
-          AsyncButton(
-            'I completed the purchase — refresh',
-            icon: Icons.refresh,
-            onPressed: () async {
-              await runAction(context, () async {
-                await store.api.subscriptions.reconcile();
-                await store.loadSubscription();
-                await store.loadProfile();
-              }, success: 'Subscription refreshed');
-              if (context.mounted && store.isPremium) Navigator.pop(context);
-            },
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'In-app purchase needs the RevenueCat SDK and store products configured for this build.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: muted),
-          ),
+          if (loading)
+            const LoadingBlock(height: 52)
+          else if (package != null) ...[
+            AsyncButton(
+              // Already interpolated: the price comes from the store, so it is
+              // never a key the translation table could carry.
+              tr('Subscribe · {price}', {'price': price}),
+              icon: Icons.lock_open_rounded,
+              onPressed: () => _buy(store),
+            ),
+            const SizedBox(height: 10),
+            AsyncButton(
+              'Restore Purchases',
+              outline: true,
+              icon: Icons.restore,
+              onPressed: () => _restore(store),
+            ),
+          ] else ...[
+            // No package means no store on this build. Buying has to happen
+            // elsewhere, so the old hand-off stays as the way back in.
+            AsyncButton(
+              'I completed the purchase — refresh',
+              icon: Icons.refresh,
+              onPressed: () async {
+                await runAction(
+                  context,
+                  () => _refreshAccount(store),
+                  success: 'Subscription refreshed',
+                );
+                if (context.mounted && store.isPremium) Navigator.pop(context);
+              },
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'This build cannot open the store, so complete the purchase there and come back.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: muted),
+            ),
+          ],
         ],
       ),
     );

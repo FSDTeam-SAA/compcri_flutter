@@ -756,6 +756,16 @@ const _pt = <String, String>{
   'I completed the purchase — refresh': 'Concluí a compra — atualizar',
   'In-app purchase needs the RevenueCat SDK and store products configured for this build.':
       'A compra no app precisa do SDK do RevenueCat e dos produtos da loja configurados nesta versão.',
+  'Premium is billed by the App Store or Play Store. Cancel any time from there; the trial only charges you once it ends.':
+      'O Premium é cobrado pela App Store ou Play Store. Cancele quando quiser por lá; o teste só é cobrado quando termina.',
+  'Subscribe · {price}': 'Assinar · {price}',
+  'Restore Purchases': 'Restaurar compras',
+  'Welcome to Premium.': 'Bem-vindo ao Premium.',
+  'Your subscription is back.': 'Sua assinatura foi restaurada.',
+  'No previous purchase was found for this account.':
+      'Nenhuma compra anterior foi encontrada para esta conta.',
+  'This build cannot open the store, so complete the purchase there and come back.':
+      'Esta versão não abre a loja; conclua a compra por lá e volte aqui.',
   'Thanks — support has your message.':
       'Obrigado — o suporte recebeu sua mensagem.',
   'Your name': 'Seu nome',
@@ -1523,6 +1533,16 @@ const _es = <String, String>{
   'I completed the purchase — refresh': 'Ya completé la compra: actualizar',
   'In-app purchase needs the RevenueCat SDK and store products configured for this build.':
       'La compra en la app necesita el SDK de RevenueCat y los productos de la tienda configurados en esta versión.',
+  'Premium is billed by the App Store or Play Store. Cancel any time from there; the trial only charges you once it ends.':
+      'Premium se cobra a través de App Store o Play Store. Cancela cuando quieras desde allí; la prueba solo se cobra al terminar.',
+  'Subscribe · {price}': 'Suscribirse · {price}',
+  'Restore Purchases': 'Restaurar compras',
+  'Welcome to Premium.': 'Bienvenido a Premium.',
+  'Your subscription is back.': 'Tu suscripción se restauró.',
+  'No previous purchase was found for this account.':
+      'No se encontró ninguna compra anterior para esta cuenta.',
+  'This build cannot open the store, so complete the purchase there and come back.':
+      'Esta versión no puede abrir la tienda; completa la compra allí y vuelve.',
   'Thanks — support has your message.': 'Gracias: soporte recibió tu mensaje.',
   'Your name': 'Tu nombre',
   'Email Address': 'Correo electrónico',

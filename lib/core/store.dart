@@ -5,6 +5,7 @@ import 'api_client.dart';
 import 'config.dart';
 import 'i18n.dart';
 import 'models.dart';
+import 'purchases.dart';
 import 'push.dart';
 import 'time.dart';
 
@@ -195,6 +196,12 @@ class AppStore extends ChangeNotifier {
     try {
       subscription = await api.subscriptions.mine();
       notifyListeners();
+      // The store only learns who is buying once the API has said so, which is
+      // here: this is the first point at which the account's store id exists.
+      final appUserId = subscription?.appUserId ?? '';
+      if (appUserId.isNotEmpty) {
+        unawaited(StorePurchases.instance.identify(appUserId));
+      }
     } on ApiException {
       // Non-fatal.
     }
@@ -255,6 +262,7 @@ class AppStore extends ChangeNotifier {
 
   Future<void> signOut({bool callServer = true}) async {
     await PushMessaging.instance.stop(api);
+    await StorePurchases.instance.forget();
     final refreshToken = api.client.session?.refreshToken;
     if (callServer && refreshToken != null) {
       try {

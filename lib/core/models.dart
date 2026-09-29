@@ -1095,6 +1095,7 @@ class SubscriptionInfo {
   const SubscriptionInfo({
     required this.plan,
     required this.status,
+    this.appUserId = '',
     this.productId,
     this.expiresAt,
     this.willRenew = false,
@@ -1102,6 +1103,11 @@ class SubscriptionInfo {
   });
 
   final String plan, status;
+
+  /// Who this account is to the store. Purchases are made under this id, which
+  /// is what lets a subscription bought on one device unlock the account on
+  /// another — and what the store's webhook names back to the API.
+  final String appUserId;
   final String? productId, managementUrl;
   final DateTime? expiresAt;
   final bool willRenew;
@@ -1127,6 +1133,7 @@ class SubscriptionInfo {
     return SubscriptionInfo(
       plan: _string(json['plan'], 'FREE'),
       status: _string(data['status'], 'FREE'),
+      appUserId: _string(json['appUserId'], ''),
       productId: data['productId'] as String?,
       expiresAt: _date(data['expiresAt']) ?? _date(json['premiumUntil']),
       willRenew: data['willRenew'] as bool? ?? false,

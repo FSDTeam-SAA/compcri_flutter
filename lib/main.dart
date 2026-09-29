@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'core/design.dart';
 import 'core/i18n.dart';
+import 'core/purchases.dart';
 import 'core/push.dart';
 import 'core/store.dart';
 import 'features/auth.dart';
@@ -21,6 +22,9 @@ Future<void> main() async {
   // Optional: a build without the Firebase config files still runs, it just
   // keeps notifications inside the app.
   await PushMessaging.instance.enable();
+  // Likewise optional: a platform with no store key shows the plans without
+  // prices rather than refusing to start.
+  await StorePurchases.instance.enable();
   runApp(const MyApp());
 }
 

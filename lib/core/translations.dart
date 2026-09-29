@@ -359,6 +359,7 @@ const _pt = <String, String>{
   'Working…': 'Processando…',
   'One moment': 'Um momento',
   'Tap to talk': 'Toque para falar',
+  'Pause listening': 'Pausar escuta',
   'Enable spoken replies': 'Ativar respostas faladas',
   'Mute spoken replies': 'Silenciar respostas faladas',
 
@@ -592,11 +593,11 @@ const _pt = <String, String>{
       'Nada anotado ainda. Toque em "Todas as notas" para ditar ou escrever uma.',
 
   // --- onboarding ------------------------------------------------------------------
-  'A LITTLE MORE CLARITY': 'UM POUCO MAIS DE CLAREZA',
-  'Your day,\nbeautifully planned.': 'Seu dia,\nlindamente planejado.',
-  'Make room for what matters. Keep your events, reminders, and ideas together.':
-      'Abra espaço para o que importa. Mantenha seus eventos, lembretes e ideias juntos.',
-  'One calm place for your day': 'Um lugar tranquilo para o seu dia',
+  'YOUR AI CALENDAR': 'SEU CALENDÁRIO COM IA',
+  'Organize your day\nwith clarity': 'Organize seu dia\ncom clareza',
+  'Keep your events, reminders, and ideas in one place.':
+      'Mantenha seus eventos, lembretes e ideias em um só lugar.',
+  'Everything in one place.': 'Tudo em um só lugar.',
   'LESS TYPING. MORE LIVING.': 'MENOS DIGITAÇÃO. MAIS VIDA.',
   'Say it.\nLet Aria help.': 'Fale.\nDeixe a Aria ajudar.',
   'Speak naturally or send a message. Turn a thought into a plan, one conversation at a time.':
@@ -1135,6 +1136,7 @@ const _es = <String, String>{
   'Working…': 'Procesando…',
   'One moment': 'Un momento',
   'Tap to talk': 'Toca para hablar',
+  'Pause listening': 'Pausar escucha',
   'Enable spoken replies': 'Activar respuestas habladas',
   'Mute spoken replies': 'Silenciar respuestas habladas',
 
@@ -1368,11 +1370,11 @@ const _es = <String, String>{
       'Aún no hay nada anotado. Toca "Todas las notas" para dictar o escribir una.',
 
   // --- onboarding ------------------------------------------------------------------
-  'A LITTLE MORE CLARITY': 'UN POCO MÁS DE CLARIDAD',
-  'Your day,\nbeautifully planned.': 'Tu día,\nbien planificado.',
-  'Make room for what matters. Keep your events, reminders, and ideas together.':
-      'Haz espacio para lo que importa. Reúne tus eventos, recordatorios e ideas.',
-  'One calm place for your day': 'Un lugar tranquilo para tu día',
+  'YOUR AI CALENDAR': 'TU CALENDARIO CON IA',
+  'Organize your day\nwith clarity': 'Organiza tu día\ncon claridad',
+  'Keep your events, reminders, and ideas in one place.':
+      'Reúne tus eventos, recordatorios e ideas en un solo lugar.',
+  'Everything in one place.': 'Todo en un solo lugar.',
   'LESS TYPING. MORE LIVING.': 'MENOS ESCRIBIR. MÁS VIVIR.',
   'Say it.\nLet Aria help.': 'Dilo.\nDeja que Aria te ayude.',
   'Speak naturally or send a message. Turn a thought into a plan, one conversation at a time.':

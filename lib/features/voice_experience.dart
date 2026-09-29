@@ -72,7 +72,6 @@ class VoiceExperience extends StatefulWidget {
 }
 
 class _VoiceExperienceState extends State<VoiceExperience> {
-  bool typing = false;
   static const violet = Color(0xff7c3aed);
   static const ink = Color(0xff241b39);
   static const soft = Color(0xff786b90);
@@ -310,10 +309,8 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                         TextButton(
                           onPressed: disabled || widget.recording
                               ? null
-                              : () {
-                                  setState(() => typing = true);
-                                  widget.controller.text = tr(suggestion);
-                                },
+                              : () =>
+                                    widget.controller.text = tr(suggestion),
                           child: Row(
                             children: [
                               const Icon(Icons.north_west_rounded, size: 15),
@@ -401,12 +398,14 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                     ),
                   ],
                 )
-              else if (typing)
+              else
+                // Always on screen. Typing used to be behind a toggle that sat
+                // next to "Tap to talk" doing the same job from the other
+                // direction, which read as two buttons for one decision; the
+                // three ways in — typing, tapping, hands-free — are now each
+                // visible at once.
                 TextField(
                   controller: widget.controller,
-                  // Kept on screen through a recording: hands-free holds the
-                  // microphone open between turns, so hiding the field there
-                  // took the keyboard away for the whole call.
                   enabled: !widget.sending,
                   minLines: 1,
                   maxLines: 3,
@@ -426,29 +425,22 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                     ),
                   ),
                 ),
-              if (typing) const SizedBox(height: 10),
+              const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  IconButton(
-                    tooltip: widget.recording
-                        ? 'Cancel recording'
-                        : typing
-                        ? tr('Use microphone')
-                        : tr('Type instead'),
-                    onPressed: disabled
-                        ? null
-                        : widget.recording
-                        ? widget.onCancel
-                        : () => setState(() => typing = !typing),
-                    icon: Icon(
-                      widget.recording
-                          ? Icons.close_rounded
-                          : typing
-                          ? Icons.mic_none_rounded
-                          : Icons.keyboard_alt_outlined,
-                      color: soft,
-                    ),
+                  // Only ever a way out of a recording now. The keyboard needs
+                  // no button of its own, and the width is held either way so
+                  // the talk button does not shift under the thumb.
+                  SizedBox(
+                    width: 48,
+                    child: widget.recording
+                        ? IconButton(
+                            tooltip: tr('Cancel recording'),
+                            onPressed: disabled ? null : widget.onCancel,
+                            icon: const Icon(Icons.close_rounded, color: soft),
+                          )
+                        : null,
                   ),
                   Semantics(
                     button: true,
@@ -488,7 +480,12 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                               : widget.busy
                               ? 'One moment'
                               : widget.recording
-                              ? 'Send'
+                              // Hands-free sends on a pause by itself, so the
+                              // button is how you stop it listening rather
+                              // than how you send.
+                              ? (widget.handsFree
+                                    ? 'Pause listening'
+                                    : 'Send')
                               : 'Tap to talk',
                         ),
                       ),

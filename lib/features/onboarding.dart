@@ -22,13 +22,14 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   bool get reduce => MediaQuery.disableAnimationsOf(context);
   static const violet = Color(0xff7c3aed);
   static const slides = [
+    // Wording supplied by the client, who found the original too playful for
+    // a calendar people run their working day on.
     (
       asset: 'plan',
-      label: 'A LITTLE MORE CLARITY',
-      title: 'Your day,\nbeautifully planned.',
-      body:
-          'Make room for what matters. Keep your events, reminders, and ideas together.',
-      chip: 'One calm place for your day',
+      label: 'YOUR AI CALENDAR',
+      title: 'Organize your day\nwith clarity',
+      body: 'Keep your events, reminders, and ideas in one place.',
+      chip: 'Everything in one place.',
       icon: Icons.calendar_month_outlined,
     ),
     (
@@ -336,11 +337,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'A little more time for you.',
-                  style: TextStyle(color: Color(0xff9a8eac), fontSize: 11),
                 ),
               ],
             ),

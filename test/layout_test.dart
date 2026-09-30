@@ -253,4 +253,24 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('composer', () {
+    testWidgets('stays enabled so iOS never strands the keyboard', (
+      tester,
+    ) async {
+      final store = await storeWith(tester);
+      await pumpScreen(tester, store, const ConversationScreen());
+
+      // Disabling a field iOS is holding the keyboard for leaves the keyboard
+      // on screen over a layout that has already reflowed without it — the
+      // stuck keyboard people had to restart the app to clear. Whatever the
+      // send state, this field accepts focus.
+      final field = find.byType(TextField);
+      expect(field, findsWidgets);
+      for (final widget in tester.widgetList<TextField>(field)) {
+        expect(widget.enabled, isNot(false));
+      }
+      expect(tester.takeException(), isNull);
+    });
+  });
 }

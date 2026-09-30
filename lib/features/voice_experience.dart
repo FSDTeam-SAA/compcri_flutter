@@ -406,7 +406,9 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                 // visible at once.
                 TextField(
                   controller: widget.controller,
-                  enabled: !widget.sending,
+                  // Left enabled on purpose: disabling a field iOS is holding
+                  // the keyboard for leaves that keyboard stranded on screen.
+                  // See the composer in dashboard.dart.
                   minLines: 1,
                   maxLines: 3,
                   textInputAction: TextInputAction.send,

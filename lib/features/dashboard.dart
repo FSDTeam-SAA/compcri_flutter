@@ -1690,11 +1690,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
                 child: TextField(
                   controller: input,
-                  // Typing stays open while the microphone is, because
-                  // hands-free reopens it after every reply: locking the field
-                  // on `recording` left the whole screen unusable until the
-                  // user backed out of it.
-                  enabled: !sending,
+                  // Never disabled. Hands-free reopens the microphone after
+                  // every reply, so locking the field on `recording` left the
+                  // screen unusable; and disabling a field iOS is holding the
+                  // keyboard for strands that keyboard on screen, which is the
+                  // stuck keyboard and broken layout people had to restart the
+                  // app to clear. The send path guards itself instead.
                   onSubmitted: _sendTyped,
                   decoration: InputDecoration(
                     hintText: tr('Ask anything'),

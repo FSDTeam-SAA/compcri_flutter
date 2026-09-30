@@ -28,10 +28,21 @@ const _stripCell = 54.0;
 const _stripGap = 6.0;
 const _stripExtent = _stripCell + _stripGap;
 
+/// The three ways the calendar can be read: one day hour by hour, the same day
+/// as a list, or the whole month at a glance.
+enum CalendarView {
+  day('Day'),
+  agenda('Agenda'),
+  month('Month');
+
+  const CalendarView(this.label);
+  final String label;
+}
+
 class _CalendarTabState extends State<CalendarTab> {
   DateTime date = DateUtils.dateOnly(DateTime.now());
   DateTime now = DateTime.now();
-  bool agenda = false;
+  CalendarView view = CalendarView.day;
   bool expanded = false;
   bool fetching = false;
   String? error;
@@ -136,6 +147,19 @@ class _CalendarTabState extends State<CalendarTab> {
   Future<void> open(CalendarEvent event) async {
     await go(context, '/event', event);
     if (mounted) await select(date, refresh: true);
+  }
+
+  /// One tap of the arrows. The month grid moves a month at a time; the other
+  /// views move a week, which is what the strip above them shows.
+  ///
+  /// Clamping the day keeps 31 January from landing on 2 March.
+  DateTime _step(int direction) {
+    if (view != CalendarView.month) {
+      return DateTime(date.year, date.month, date.day + 7 * direction);
+    }
+    final month = DateTime(date.year, date.month + direction);
+    final days = DateUtils.getDaysInMonth(month.year, month.month);
+    return DateTime(month.year, month.month, date.day.clamp(1, days));
   }
 
   List<CalendarEvent> eventsFor(AppStore store, DateTime day) {
@@ -324,10 +348,10 @@ class _CalendarTabState extends State<CalendarTab> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           IconButton(
-                            tooltip: tr('Previous week'),
-                            onPressed: () => select(
-                              DateTime(date.year, date.month, date.day - 7),
-                            ),
+                            tooltip: view == CalendarView.month
+                                ? tr('Previous month')
+                                : tr('Previous week'),
+                            onPressed: () => select(_step(-1)),
                             icon: const Icon(
                               Icons.chevron_left,
                               color: _soft,
@@ -336,7 +360,11 @@ class _CalendarTabState extends State<CalendarTab> {
                           ),
                           Expanded(
                             child: Text(
-                              DateFormat('EEEE, MMM d').format(date),
+                              // The month grid already names every day, so the
+                              // line above it says which month you are in.
+                              view == CalendarView.month
+                                  ? DateFormat('MMMM yyyy').format(date)
+                                  : DateFormat('EEEE, MMM d').format(date),
                               textAlign: TextAlign.center,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -347,10 +375,10 @@ class _CalendarTabState extends State<CalendarTab> {
                             ),
                           ),
                           IconButton(
-                            tooltip: tr('Next week'),
-                            onPressed: () => select(
-                              DateTime(date.year, date.month, date.day + 7),
-                            ),
+                            tooltip: view == CalendarView.month
+                                ? tr('Next month')
+                                : tr('Next week'),
+                            onPressed: () => select(_step(1)),
                             icon: const Icon(
                               Icons.chevron_right,
                               color: _soft,
@@ -377,23 +405,23 @@ class _CalendarTabState extends State<CalendarTab> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                for (final isAgenda in [false, true])
+                                for (final option in CalendarView.values)
                                   Semantics(
-                                    selected: agenda == isAgenda,
+                                    selected: view == option,
                                     button: true,
                                     child: InkWell(
                                       borderRadius: BorderRadius.circular(25),
                                       onTap: () =>
-                                          setState(() => agenda = isAgenda),
+                                          setState(() => view = option),
                                       child: AnimatedContainer(
                                         duration: motion,
                                         curve: Curves.easeOutCubic,
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 18,
+                                          horizontal: 14,
                                           vertical: 12,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: agenda == isAgenda
+                                          color: view == option
                                               ? _accent
                                               : Colors.transparent,
                                           borderRadius: BorderRadius.circular(
@@ -401,11 +429,11 @@ class _CalendarTabState extends State<CalendarTab> {
                                           ),
                                         ),
                                         child: Text(
-                                          isAgenda ? 'Agenda' : 'Day',
+                                          option.label,
                                           style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w700,
-                                            color: agenda == isAgenda
+                                            color: view == option
                                                 ? Colors.white
                                                 : _soft,
                                           ),
@@ -459,10 +487,12 @@ class _CalendarTabState extends State<CalendarTab> {
                           ),
                         ),
                         child: KeyedSubtree(
-                          key: ValueKey('$date/$agenda/$expanded'),
-                          child: agenda
-                              ? buildAgenda(events)
-                              : buildTimeline(events),
+                          key: ValueKey('$date/${view.name}/$expanded'),
+                          child: switch (view) {
+                            CalendarView.agenda => buildAgenda(events),
+                            CalendarView.month => buildMonth(store),
+                            CalendarView.day => buildTimeline(events),
+                          },
                         ),
                       ),
                     ],
@@ -582,6 +612,112 @@ class _CalendarTabState extends State<CalendarTab> {
           ),
         ),
       ),
+    );
+  }
+
+  /// The whole month at a glance: which days carry something, and how the
+  /// selected one sits among them. Tapping a day selects it, so switching to
+  /// Day or Agenda afterwards lands where the user was looking.
+  Widget buildMonth(AppStore store) {
+    final first = DateTime(date.year, date.month);
+    final daysInMonth = DateUtils.getDaysInMonth(date.year, date.month);
+    // Monday-first, matching the week strip above.
+    final leading = (first.weekday + 6) % 7;
+    final cells = <DateTime?>[
+      for (var i = 0; i < leading; i++) null,
+      for (var day = 1; day <= daysInMonth; day++)
+        DateTime(date.year, date.month, day),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            for (var i = 0; i < 7; i++)
+              Expanded(
+                child: Text(
+                  DateFormat('E').format(DateTime(2024, 1, 1 + i)),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: _soft,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: cells.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            mainAxisSpacing: 4,
+            crossAxisSpacing: 4,
+            childAspectRatio: .82,
+          ),
+          itemBuilder: (context, index) {
+            final day = cells[index];
+            if (day == null) return const SizedBox.shrink();
+            final count = eventsFor(store, day).length;
+            final selected = DateUtils.isSameDay(day, date);
+            final today = DateUtils.isSameDay(day, now);
+            return InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => select(day),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: selected ? _accent : Colors.white.withValues(alpha: .6),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: today && !selected
+                        ? _accent
+                        : _accent.withValues(alpha: .1),
+                    width: today && !selected ? 1.4 : 1,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '${day.day}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: selected ? Colors.white : _ink,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    // A row of dots reads as "how busy" without needing a
+                    // number; past three they stop being countable anyway.
+                    SizedBox(
+                      height: 5,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          for (var i = 0; i < count.clamp(0, 3); i++)
+                            Container(
+                              width: 4,
+                              height: 4,
+                              margin: const EdgeInsets.symmetric(horizontal: 1),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: selected ? Colors.white : _accent,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 

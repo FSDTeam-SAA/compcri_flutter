@@ -41,6 +41,50 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('the month view shows every day and selects the one tapped', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = await bootedStore(tester, FakeBackend());
+    await tester.pumpWidget(
+      StoreScope(
+        notifier: store,
+        child: MaterialApp(
+          theme: appTheme,
+          home: const Scaffold(body: SafeArea(child: CalendarTab())),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Month'));
+    await tester.pumpAndSettle();
+
+    // Every day of this month has a cell, and the header names the month
+    // rather than a single day.
+    final today = DateTime.now();
+    final days = DateUtils.getDaysInMonth(today.year, today.month);
+    expect(find.text('$days'), findsWidgets);
+    expect(find.byTooltip('Next month'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Tapping a day carries the selection into the other views, so switching
+    // lands where the user was looking rather than back on today.
+    final target = today.day == 1 ? 2 : 1;
+    await tester.tap(find.text('$target').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Agenda'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Create Event'));
+    await tester.pumpAndSettle();
+    final form = tester.widget<EventForm>(find.byType(EventForm));
+    expect(form.initialStart!.day, target);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets(
     'overlapping and overnight events remain visible on a small screen',
     (tester) async {

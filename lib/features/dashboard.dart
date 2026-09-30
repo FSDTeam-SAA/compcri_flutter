@@ -507,6 +507,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   int recordingSeconds = 0;
   double soundLevel = 0;
   Timer? recordingTimer;
+  Timer? noticeTimer;
   StreamSubscription<Amplitude>? amplitudeSubscription;
   StreamSubscription<PlayerState>? playbackSubscription;
   StreamSubscription<void>? completionSubscription;
@@ -548,6 +549,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   void initState() {
     super.initState();
     conversationId = widget.conversationId;
+    unawaited(_prepareAudioSession());
     playbackSubscription = player.onPlayerStateChanged.listen((state) {
       if (mounted) setState(() => speaking = state == PlayerState.playing);
     });
@@ -557,6 +559,55 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (mounted) _onClipComplete();
     });
     _restoreVoicePrefs();
+  }
+
+  /// How long a passing notice stays on screen before it clears itself.
+  static const _noticeLinger = Duration(seconds: 4);
+
+  /// Shows something the user only needs to read once.
+  ///
+  /// A notice about a reply that could not be spoken describes a turn already
+  /// past, so leaving it pinned under the conversation made it look like a
+  /// standing fault rather than a hiccup. Errors the user has to act on — no
+  /// microphone permission, the daily allowance spent — are set directly and
+  /// stay put.
+  void _flashNotice(String message) {
+    noticeTimer?.cancel();
+    setState(() => voiceError = message);
+    noticeTimer = Timer(_noticeLinger, () {
+      if (mounted && voiceError == message) setState(() => voiceError = null);
+    });
+  }
+
+  /// Lets the reply be heard on a phone that has just been recording.
+  ///
+  /// The recorder claims the iOS audio session for recording; left at its
+  /// playback-only default the player then either fails outright or comes out
+  /// of the earpiece, which reads as a reply with no sound. Declaring one
+  /// session that does both, routed to the loudspeaker, is what keeps a
+  /// spoken answer audible between turns.
+  Future<void> _prepareAudioSession() async {
+    try {
+      await AudioPlayer.global.setAudioContext(
+        AudioContext(
+          iOS: AudioContextIOS(
+            category: AVAudioSessionCategory.playAndRecord,
+            options: const {
+              AVAudioSessionOptions.defaultToSpeaker,
+              AVAudioSessionOptions.allowBluetooth,
+              AVAudioSessionOptions.mixWithOthers,
+            },
+          ),
+          android: const AudioContextAndroid(
+            contentType: AndroidContentType.speech,
+            usageType: AndroidUsageType.assistant,
+            audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+          ),
+        ),
+      );
+    } catch (_) {
+      // A platform that cannot take a context still plays on its defaults.
+    }
   }
 
   /// Remembered settings are a convenience, never a precondition: if storage
@@ -618,6 +669,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     input.dispose();
     scroll.dispose();
     recordingTimer?.cancel();
+    noticeTimer?.cancel();
     amplitudeSubscription?.cancel();
     playbackSubscription?.cancel();
     completionSubscription?.cancel();
@@ -875,10 +927,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Future<void> _stopAtLimit() async {
     await _toggleVoice();
     if (!mounted) return;
-    setState(
-      () =>
-          voiceError = 'That reached the longest recording I can send at once.',
-    );
+    _flashNotice('That reached the longest recording I can send at once.');
   }
 
   /// Ends a hands-free turn on a pause. Called once per amplitude tick, so the
@@ -898,10 +947,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         unawaited(_toggleVoice());
       }
     } else if (silenceSeconds >= _silenceToGiveUp.inSeconds) {
-      setState(
-        () => voiceError =
-            'I did not catch anything. Tap the mic when you are ready.',
-      );
+      _flashNotice('I did not catch anything. Tap the mic when you are ready.');
       unawaited(_cancelRecording());
     }
   }
@@ -1088,9 +1134,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
         clipQueue.clear();
         clipPlaying = false;
         clipsPending = false;
-        voiceError =
-            'Audio playback is unavailable. You can read the reply below.';
       });
+      _flashNotice('Audio playback is unavailable. You can read the reply below.');
       // No audio means no completion event, so drive the loop by hand.
       _afterReply();
     }
@@ -1129,11 +1174,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// call moving, since no completion event is coming for the missing audio.
   void _speechFailed(int playback) {
     if (!mounted || playback != replyTurn) return;
-    setState(() {
-      clipsPending = false;
-      voiceError =
-          'Audio playback is unavailable. You can read the reply below.';
-    });
+    setState(() => clipsPending = false);
+    _flashNotice('Audio playback is unavailable. You can read the reply below.');
     if (!clipPlaying && clipQueue.isEmpty) _afterReply();
   }
 

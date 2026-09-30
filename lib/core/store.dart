@@ -40,6 +40,17 @@ class AppStore extends ChangeNotifier {
   bool get isPremium => user?.isPremium ?? false;
   String get calendarId => calendar?.id ?? '';
 
+  /// The name the assistant answers to, before anyone has renamed it.
+  static const defaultAssistantName = 'Aurox Day';
+
+  /// What to call the assistant on screen and in the prompt. Falling back
+  /// rather than storing the default at signup means a later change to that
+  /// default reaches everyone who never picked a name of their own.
+  String get assistantName {
+    final chosen = user?.assistantName.trim() ?? '';
+    return chosen.isEmpty ? defaultAssistantName : chosen;
+  }
+
   // --- cached collections ------------------------------------------------
 
   List<CalendarEvent> events = const <CalendarEvent>[];

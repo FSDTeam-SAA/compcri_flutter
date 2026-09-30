@@ -104,6 +104,7 @@ class AppUser {
     this.locale = 'en',
     this.interests = const <String>[],
     this.aiPersonalizationConsent = false,
+    this.assistantName = '',
     this.avatar,
     this.contactCode = '',
     this.plan = 'FREE',
@@ -123,6 +124,10 @@ class AppUser {
       status;
   final List<String> interests;
   final bool aiPersonalizationConsent;
+
+  /// What this user calls the assistant. Empty means they never chose one, so
+  /// the app's own default stands in rather than a name frozen at signup.
+  final String assistantName;
   final MediaAsset? avatar;
   final DateTime? premiumUntil;
   final NotificationPreferences notificationPreferences;
@@ -155,6 +160,7 @@ class AppUser {
     city: _string(json['city']),
     locale: _string(json['locale'], 'en'),
     interests: _strings(json['interests']),
+    assistantName: _string(json['assistantName'], ''),
     aiPersonalizationConsent:
         json['aiPersonalizationConsent'] as bool? ?? false,
     avatar: MediaAsset.parse(json['avatarMediaId']),

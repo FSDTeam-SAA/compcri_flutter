@@ -26,6 +26,7 @@ class VoiceExperience extends StatefulWidget {
     required this.onMute,
     required this.onReplay,
     required this.onSend,
+    required this.assistantName,
     required this.onHandsFree,
     required this.onPickVoice,
     required this.handsFree,
@@ -63,6 +64,9 @@ class VoiceExperience extends StatefulWidget {
   final VoidCallback onPickVoice;
   final ValueChanged<bool> onHandsFree;
   final ValueChanged<String> onSend;
+
+  /// What this user calls the assistant, so the screen names it their way.
+  final String assistantName;
   final TextEditingController controller;
   final ScrollController scroll;
   final Widget messages;
@@ -86,7 +90,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
         : widget.sending
         ? 'Working on your message'
         : widget.speaking
-        ? 'Aria is speaking'
+        ? tr('{name} is speaking', {'name': widget.assistantName})
         : widget.hasRetry
         ? 'Your recording is saved'
         : widget.handsFree

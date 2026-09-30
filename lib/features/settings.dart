@@ -304,7 +304,8 @@ class _ProfileFormState extends State<ProfileForm> {
       phone = TextEditingController(),
       profession = TextEditingController(),
       country = TextEditingController(),
-      city = TextEditingController();
+      city = TextEditingController(),
+      assistant = TextEditingController();
 
   String language = 'English';
   final interests = <String>{};
@@ -331,6 +332,7 @@ class _ProfileFormState extends State<ProfileForm> {
     name.text = user.name;
     phone.text = user.phone;
     profession.text = user.profession;
+    assistant.text = user.assistantName;
     country.text = user.country;
     city.text = user.city;
     language = user.languageLabel;
@@ -343,6 +345,7 @@ class _ProfileFormState extends State<ProfileForm> {
     name.dispose();
     phone.dispose();
     profession.dispose();
+    assistant.dispose();
     country.dispose();
     city.dispose();
     super.dispose();
@@ -368,6 +371,7 @@ class _ProfileFormState extends State<ProfileForm> {
         'displayName': name.text.trim(),
         'phone': phone.text.trim(),
         'profession': profession.text.trim(),
+        'assistantName': assistant.text.trim(),
         'country': country.text.trim(),
         'city': city.text.trim(),
         'locale': AppUser.localeForLabel(language),
@@ -445,6 +449,13 @@ class _ProfileFormState extends State<ProfileForm> {
               keyboard: TextInputType.phone,
             ),
             AppField('Profession', hint: 'Profession', controller: profession),
+            // Left blank the assistant keeps the app's own name, so nobody
+            // has to invent one to get past this field.
+            AppField(
+              'Assistant name',
+              hint: AppStore.defaultAssistantName,
+              controller: assistant,
+            ),
             SelectField(
               'Language',
               value: language,

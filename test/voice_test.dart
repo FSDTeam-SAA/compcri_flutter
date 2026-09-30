@@ -167,7 +167,12 @@ void main() {
         expect(find.text('You said'), findsOneWidget);
         expect(find.text('What time works for you?'), findsOneWidget);
         expect(find.text('Transcribing your voice message…'), findsNothing);
-        expect(find.text('Voice with Aria'), findsOneWidget);
+        // The assistant is named by the account, so the title follows the
+        // app's default when nobody has renamed it.
+        expect(
+          find.text('Voice with ${AppStore.defaultAssistantName}'),
+          findsOneWidget,
+        );
         expect(recording.existsSync(), isFalse);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());

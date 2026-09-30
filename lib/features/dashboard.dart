@@ -1009,6 +1009,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// Lets the user pick which voice reads the replies. The choice is sent with
   /// the next voice turn, so it takes effect without restarting the chat.
   Future<void> _pickVoice() async {
+    // Read before the sheet opens: inside its builder the only context is the
+    // sheet's own, which sits outside this screen's StoreScope.
+    final assistant = StoreScope.read(context).assistantName;
     final chosen = await showModalBottomSheet<String?>(
       context: context,
       backgroundColor: Colors.white,
@@ -1028,11 +1031,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
               controller: controller,
               padding: const EdgeInsets.fromLTRB(8, 18, 8, 12),
               children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 4),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                   child: Text(
-                    "Aria's voice",
-                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+                    tr("{name}'s voice", {'name': assistant}),
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 const Padding(
@@ -1483,7 +1489,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       return Backdrop(
         child: Scaffold(
           appBar: AppBar(
-            title: const Text('Voice with Aria'),
+            title: Text(tr('Voice with {name}', {'name': store.assistantName})),
             actions: [
               IconButton(
                 tooltip: tr('Chat history'),
@@ -1542,6 +1548,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 }
               },
               onSend: _sendTyped,
+              assistantName: store.assistantName,
               messages: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1838,7 +1845,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     ? 'Your recording'
                     : message.isUser
                     ? 'You said'
-                    : 'Aria',
+                    : StoreScope.of(context).assistantName,
                 style: const TextStyle(
                   fontSize: 11,
                   color: Color(0xff7c3aed),

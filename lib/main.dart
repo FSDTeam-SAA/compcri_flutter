@@ -93,10 +93,18 @@ class _MyAppState extends State<MyApp> {
         initialRoute: widget.initialRoute,
         builder: (context, child) => ColoredBox(
           color: const Color(0xffeeeaf8),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: child!,
+          // Flutter leaves the keyboard up until something takes focus away,
+          // so on iOS — where tapping off a field is how everyone closes it —
+          // ours looked stuck. One handler around the whole app rather than a
+          // dozen screens remembering to add their own.
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: child!,
+              ),
             ),
           ),
         ),

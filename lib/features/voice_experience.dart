@@ -18,6 +18,7 @@ class VoiceExperience extends StatefulWidget {
     required this.level,
     required this.hasMessages,
     required this.hasRetry,
+    required this.retryIsEmpty,
     required this.canReplay,
     required this.onRecord,
     required this.onCancel,
@@ -64,6 +65,10 @@ class VoiceExperience extends StatefulWidget {
   final VoidCallback onPickVoice;
   final ValueChanged<bool> onHandsFree;
   final ValueChanged<String> onSend;
+
+  /// A kept recording that holds no speech. Nothing is lost by dropping it,
+  /// so the microphone stays live and starts a fresh turn on the next tap.
+  final bool retryIsEmpty;
 
   /// What this user calls the assistant, so the screen names it their way.
   final String assistantName;
@@ -118,6 +123,8 @@ class _VoiceExperienceState extends State<VoiceExperience> {
         Expanded(
           child: ListView(
             controller: widget.scroll,
+            keyboardDismissBehavior:
+                ScrollViewKeyboardDismissBehavior.onDrag,
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
             children: [
@@ -463,7 +470,9 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                             borderRadius: BorderRadius.circular(20),
                           ),
                         ),
-                        onPressed: disabled || widget.hasRetry
+                        onPressed:
+                            disabled ||
+                                (widget.hasRetry && !widget.retryIsEmpty)
                             ? null
                             : widget.onRecord,
                         icon: widget.sending && !reduce

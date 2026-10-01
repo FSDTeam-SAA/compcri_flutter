@@ -482,6 +482,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
   String? voiceError;
   String? retryAudioPath;
 
+  /// Whether the kept recording failed because nobody spoke into it. There is
+  /// nothing to salvage from silence, so the microphone throws it away rather
+  /// than making the user discard it before trying again.
+  bool retryWasEmpty = false;
+
   /// The voice turn in flight has been transcribed and is being answered.
   bool transcribed = false;
 
@@ -843,7 +848,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// what keeps a second voice turn in the same chat instead of starting a
   /// new one, and it drops a full screen transition from every turn.
   Future<void> _toggleVoice() async {
-    if (sending || loading || recorderBusy || retryAudioPath != null) return;
+    if (sending || loading || recorderBusy) return;
+    if (retryAudioPath != null) {
+      if (!retryWasEmpty) return;
+      await _discardAudio();
+      if (!mounted) return;
+    }
     setState(() {
       recorderBusy = true;
       voiceError = null;
@@ -1108,6 +1118,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final path = retryAudioPath;
     setState(() {
       retryAudioPath = null;
+      retryWasEmpty = false;
       voiceError = null;
     });
     if (path != null) await _deleteAudio(path);
@@ -1329,6 +1340,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
       }
       setState(() {
         retryAudioPath = path;
+        retryWasEmpty =
+            error is ApiException && error.code == 'AUDIO_NO_SPEECH';
         voiceError = error is ApiException
             ? error.message
             : '$error'.replaceFirst('Bad state: ', '');
@@ -1519,6 +1532,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
               level: soundLevel,
               hasMessages: messages.isNotEmpty,
               hasRetry: retryAudioPath != null,
+              retryIsEmpty: retryWasEmpty,
               canReplay: lastReply.isNotEmpty,
               error: voiceError,
               handsFree: handsFree,
@@ -1625,6 +1639,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       )
                     : ListView.builder(
                         controller: scroll,
+                        // Dragging the conversation puts the keyboard away,
+                        // the way every other iOS app behaves.
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.all(20),
                         itemCount: messages.length + 1,
                         itemBuilder: (context, i) {

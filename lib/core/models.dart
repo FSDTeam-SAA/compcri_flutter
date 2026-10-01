@@ -872,16 +872,21 @@ class ConversationSummary {
     required this.id,
     required this.title,
     this.updatedAt,
+    this.saved = false,
   });
 
   final String id, title;
   final DateTime? updatedAt;
+
+  /// Marked to outlive the retention sweep. Only a paid account can set it.
+  final bool saved;
 
   factory ConversationSummary.fromJson(Map<String, dynamic> json) =>
       ConversationSummary(
         id: _string(json['_id']),
         title: _string(json['title'], 'New chat'),
         updatedAt: _date(json['updatedAt']),
+        saved: json['savedAt'] != null,
       );
 }
 

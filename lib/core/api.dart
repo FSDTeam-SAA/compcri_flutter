@@ -666,6 +666,12 @@ class AiApi {
   Future<void> deleteConversation(String id) =>
       _client.delete('/ai/conversations/$id');
 
+  /// Keeps a conversation past the retention window, or lets it rejoin it.
+  Future<void> setConversationSaved(String id, bool saved) => _client.patch(
+    '/ai/conversations/$id/saved',
+    body: {'saved': saved},
+  );
+
   Future<AiTurn> sendMessage({
     required String conversationId,
     required String content,

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../core/api_client.dart';
 import '../core/config.dart';
@@ -2088,6 +2089,46 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
   }
 
+  /// Writes every conversation out as one text file and hands it to the share
+  /// sheet, so history that is about to age out can be kept off the phone.
+  Future<void> _downloadAll(AppStore store) async {
+    await runAction(context, () async {
+      final buffer = StringBuffer();
+      for (final item in store.conversations) {
+        final full = await store.api.ai.conversation(item.id);
+        buffer.writeln('# ${full.title}');
+        if (item.updatedAt != null) buffer.writeln(item.updatedAt!.toLocal());
+        buffer.writeln();
+        for (final message in full.messages) {
+          buffer.writeln('${message.isUser ? 'You' : store.assistantName}:');
+          buffer.writeln(message.text);
+          buffer.writeln();
+        }
+        buffer.writeln('---');
+        buffer.writeln();
+      }
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/aurox-chats.txt');
+      await file.writeAsString(buffer.toString());
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)], title: tr('Chat history')),
+      );
+    }, success: 'Chat history exported');
+  }
+
+  /// Keeps a conversation past the retention window, or lets it age out again.
+  Future<void> _toggleSaved(ConversationSummary item) async {
+    final store = StoreScope.read(context);
+    await runAction(
+      context,
+      () async {
+        await store.api.ai.setConversationSaved(item.id, !item.saved);
+        await store.loadConversations();
+      },
+      success: item.saved ? 'Chat will age out again' : 'Chat kept',
+    );
+  }
+
   Widget _historyDrawer(AppStore store) {
     final needle = historyQuery.toLowerCase();
     final items = store.conversations
@@ -2105,6 +2146,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 icon: const Icon(Icons.close),
               ),
             ),
+            if (store.conversations.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.download_outlined),
+                title: const Text('Download all'),
+                onTap: () {
+                  Navigator.pop(context);
+                  unawaited(_downloadAll(store));
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.add),
               title: const Text('New chat'),
@@ -2141,8 +2191,25 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               subtitle: Text(
-                                relativeTime(item.updatedAt),
+                                item.saved
+                                    ? tr('Kept')
+                                    : relativeTime(item.updatedAt),
                                 style: const TextStyle(fontSize: 10),
+                              ),
+                              // History ages out on its own, so this is how a
+                              // conversation worth keeping stays.
+                              trailing: IconButton(
+                                tooltip: item.saved
+                                    ? tr('Stop keeping this chat')
+                                    : tr('Keep this chat'),
+                                onPressed: () => _toggleSaved(item),
+                                icon: Icon(
+                                  item.saved
+                                      ? Icons.bookmark
+                                      : Icons.bookmark_border,
+                                  size: 20,
+                                  color: item.saved ? purple : muted,
+                                ),
                               ),
                               onTap: () {
                                 Navigator.pop(context);

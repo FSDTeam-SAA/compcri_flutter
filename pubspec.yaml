@@ -53,6 +53,7 @@ dependencies:
   google_sign_in: ^7.2.0
   sign_in_with_apple: ^7.0.1
   purchases_flutter: ^10.13.2
+  share_plus: ^13.3.0
 
 dev_dependencies:
   flutter_test:

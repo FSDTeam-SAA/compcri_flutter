@@ -1069,6 +1069,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     value: voice.id,
                     title: Text(voice.label),
                     subtitle: Text(voice.tone),
+                    // Choosing a voice blind meant starting a whole turn to
+                    // hear one. The sample is held server-side, so listening
+                    // through the list costs nothing.
+                    secondary: IconButton(
+                      tooltip: tr('Play sample'),
+                      onPressed: () => unawaited(_playSample(voice.id)),
+                      icon: const Icon(Icons.play_circle_outline),
+                    ),
                   ),
               ],
             ),
@@ -1083,6 +1091,20 @@ class _ConversationScreenState extends State<ConversationScreen> {
     setState(() => preferredVoice = chosen);
     final store = StoreScope.read(context);
     unawaited(store.api.client.store.setVoice(chosen));
+  }
+
+  /// Plays one voice's sample. Quiet about failure: a sample that will not
+  /// load is a reason to pick another voice, not an error to interrupt with.
+  Future<void> _playSample(String voice) async {
+    final store = StoreScope.read(context);
+    try {
+      await _stopReply();
+      final clip = await store.api.ai.voicePreview(voice);
+      if (clip == null || !mounted) return;
+      await player.play(BytesSource(clip));
+    } catch (_) {
+      if (mounted) _flashNotice('That sample could not be played.');
+    }
   }
 
   Future<void> _cancelRecording() async {

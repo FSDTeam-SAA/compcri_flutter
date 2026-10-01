@@ -64,6 +64,7 @@ const _pt = <String, String>{
 
   // --- models ----------------------------------------------------------------
   'Push Notifications': 'Notificações push',
+  'Alarm-style Reminders': 'Lembretes tipo alarme',
   'Event Reminders': 'Lembretes de eventos',
   'Invitation Alerts': 'Alertas de convites',
   'Group Updates': 'Atualizações de grupos',
@@ -264,6 +265,8 @@ const _pt = <String, String>{
   "{name}'s voice": 'Voz da {name}',
   'Applies to the next spoken reply.':
       'Vale a partir da próxima resposta falada.',
+  'Play sample': 'Ouvir amostra',
+  'That sample could not be played.': 'Não foi possível reproduzir a amostra.',
   'App default': 'Padrão do app',
   'Whatever the server is configured with': 'A voz configurada no servidor',
   'Could not cancel recording. Please try again.':
@@ -849,6 +852,7 @@ const _es = <String, String>{
 
   // --- models ----------------------------------------------------------------
   'Push Notifications': 'Notificaciones push',
+  'Alarm-style Reminders': 'Recordatorios tipo alarma',
   'Event Reminders': 'Recordatorios de eventos',
   'Invitation Alerts': 'Alertas de invitaciones',
   'Group Updates': 'Novedades de grupos',
@@ -1052,6 +1056,8 @@ const _es = <String, String>{
   "{name}'s voice": 'Voz de {name}',
   'Applies to the next spoken reply.':
       'Se aplica a la próxima respuesta hablada.',
+  'Play sample': 'Reproducir muestra',
+  'That sample could not be played.': 'No se pudo reproducir la muestra.',
   'App default': 'Predeterminada de la app',
   'Whatever the server is configured with': 'La voz configurada en el servidor',
   'Could not cancel recording. Please try again.':

@@ -44,11 +44,16 @@ class NotificationPreferences {
   const NotificationPreferences({
     this.pushEnabled = true,
     this.reminders = true,
+    this.alarmReminders = false,
     this.invitations = true,
     this.groupUpdates = true,
     this.contactRequests = true,
     this.subscriptionUpdates = true,
   });
+
+  /// Off unless asked for: a reminder that rings like an alarm and cuts
+  /// through a Focus is not something to hand anyone by default.
+  final bool alarmReminders;
 
   final bool pushEnabled,
       reminders,
@@ -63,6 +68,7 @@ class NotificationPreferences {
     return NotificationPreferences(
       pushEnabled: read('pushEnabled'),
       reminders: read('reminders'),
+      alarmReminders: data['alarmReminders'] as bool? ?? false,
       invitations: read('invitations'),
       groupUpdates: read('groupUpdates'),
       contactRequests: read('contactRequests'),
@@ -74,6 +80,7 @@ class NotificationPreferences {
   Map<String, bool> get asLabels => {
     'Push Notifications': pushEnabled,
     'Event Reminders': reminders,
+    'Alarm-style Reminders': alarmReminders,
     'Invitation Alerts': invitations,
     'Group Updates': groupUpdates,
     'New Contact Requests': contactRequests,
@@ -83,6 +90,7 @@ class NotificationPreferences {
   static const labelKeys = {
     'Push Notifications': 'pushEnabled',
     'Event Reminders': 'reminders',
+    'Alarm-style Reminders': 'alarmReminders',
     'Invitation Alerts': 'invitations',
     'Group Updates': 'groupUpdates',
     'New Contact Requests': 'contactRequests',

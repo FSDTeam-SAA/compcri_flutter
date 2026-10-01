@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'api_client.dart';
 import 'i18n.dart';
 import 'models.dart';
@@ -659,6 +662,15 @@ class AiApi {
       ),
     ),
   );
+
+  /// A short spoken sample of one voice. The server keeps these, so listening
+  /// through the list costs nothing after the first time anyone does.
+  Future<Uint8List?> voicePreview(String voice) async {
+    final body = _map(await _client.get('/ai/voices/$voice/preview'));
+    final encoded = body['base64'];
+    if (encoded is! String || encoded.isEmpty) return null;
+    return base64Decode(encoded);
+  }
 
   Future<Conversation> conversation(String id) async =>
       Conversation.fromJson(_map(await _client.get('/ai/conversations/$id')));

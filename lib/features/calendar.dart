@@ -6,11 +6,10 @@ import 'package:intl/intl.dart';
 
 import '../core/design.dart';
 import '../core/store.dart';
+import '../core/time.dart';
 import 'events.dart';
 import '../core/i18n.dart';
 
-const _ink = Color(0xff1e1930);
-const _soft = Color(0xff6f6688);
 const _accent = Color(0xff7c3aed);
 
 class CalendarTab extends StatefulWidget {
@@ -46,6 +45,9 @@ class _CalendarTabState extends State<CalendarTab> {
   bool expanded = false;
   bool fetching = false;
   String? error;
+
+  /// The slot just tapped in the day view, outlined while its form is open.
+  int? pendingSlot;
   int request = 0;
   late final Timer clock;
   final strip = ScrollController();
@@ -120,28 +122,33 @@ class _CalendarTabState extends State<CalendarTab> {
       }
     } catch (_) {
       if (mounted && token == request) {
-        setState(() => error = 'Could not load events. Pull down to retry.');
+        setState(() => error = 'Could not load events.');
       }
     } finally {
       if (mounted && token == request) setState(() => fetching = false);
     }
   }
 
-  Future<void> create([int minute = 540]) async {
+  /// Opens the form on [minute] of the selected day — or, with none given,
+  /// at 9:00, or the next full hour when the day is today and 9:00 has gone.
+  Future<void> create([int? minute]) async {
+    final now = DateTime.now();
+    final DateTime initial;
+    if (minute != null) {
+      initial = DateTime(date.year, date.month, date.day, 0, minute);
+    } else {
+      final nine = DateTime(date.year, date.month, date.day, 9);
+      initial = DateUtils.isSameDay(date, now) && nine.isBefore(now)
+          ? upcomingStart(now)
+          : nine;
+    }
+    setState(() => pendingSlot = minute);
     await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => EventForm(
-          initialStart: DateTime(
-            date.year,
-            date.month,
-            date.day,
-            minute ~/ 60,
-            minute % 60,
-          ),
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => EventForm(initialStart: initial)),
     );
-    if (mounted) await select(date, refresh: true);
+    if (!mounted) return;
+    setState(() => pendingSlot = null);
+    await select(date, refresh: true);
   }
 
   Future<void> open(CalendarEvent event) async {
@@ -188,7 +195,7 @@ class _CalendarTabState extends State<CalendarTab> {
       child: Stack(
         children: [
           RefreshIndicator(
-            color: _accent,
+            color: AppPalette.of(context).accent,
             onRefresh: () => select(date, refresh: true),
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(
@@ -221,11 +228,11 @@ class _CalendarTabState extends State<CalendarTab> {
                                 ),
                                 child: Text(
                                   DateFormat('MMMM yyyy').format(date),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 21,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: -.5,
-                                    color: _ink,
+                                    color: AppPalette.of(context).ink,
                                   ),
                                 ),
                               ),
@@ -233,8 +240,10 @@ class _CalendarTabState extends State<CalendarTab> {
                           ),
                           TextButton(
                             style: TextButton.styleFrom(
-                              foregroundColor: _accent,
-                              backgroundColor: const Color(0xffede9fe),
+                              foregroundColor: AppPalette.of(context).accent,
+                              backgroundColor: AppPalette.of(
+                                context,
+                              ).wash(const Color(0xffede9fe)),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
                               ),
@@ -277,14 +286,14 @@ class _CalendarTabState extends State<CalendarTab> {
                                     decoration: BoxDecoration(
                                       color: selected
                                           ? _accent
-                                          : Colors.white.withValues(alpha: .65),
+                                          : AppPalette.of(
+                                              context,
+                                            ).surface.withValues(alpha: .65),
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
                                         color: today && !selected
                                             ? _accent
-                                            : Colors.white.withValues(
-                                                alpha: .7,
-                                              ),
+                                            : AppPalette.of(context).border,
                                       ),
                                       boxShadow: selected
                                           ? [
@@ -308,7 +317,7 @@ class _CalendarTabState extends State<CalendarTab> {
                                             fontWeight: FontWeight.w700,
                                             color: selected
                                                 ? Colors.white70
-                                                : _soft,
+                                                : AppPalette.of(context).muted,
                                           ),
                                         ),
                                         const SizedBox(height: 5),
@@ -319,7 +328,7 @@ class _CalendarTabState extends State<CalendarTab> {
                                             fontWeight: FontWeight.w800,
                                             color: selected
                                                 ? Colors.white
-                                                : _ink,
+                                                : AppPalette.of(context).ink,
                                           ),
                                         ),
                                         const SizedBox(height: 5),
@@ -352,9 +361,9 @@ class _CalendarTabState extends State<CalendarTab> {
                                 ? tr('Previous month')
                                 : tr('Previous week'),
                             onPressed: () => select(_step(-1)),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.chevron_left,
-                              color: _soft,
+                              color: AppPalette.of(context).muted,
                               size: 20,
                             ),
                           ),
@@ -368,8 +377,8 @@ class _CalendarTabState extends State<CalendarTab> {
                               textAlign: TextAlign.center,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: _soft,
+                              style: TextStyle(
+                                color: AppPalette.of(context).muted,
                                 fontSize: 12,
                               ),
                             ),
@@ -379,9 +388,9 @@ class _CalendarTabState extends State<CalendarTab> {
                                 ? tr('Next month')
                                 : tr('Next week'),
                             onPressed: () => select(_step(1)),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.chevron_right,
-                              color: _soft,
+                              color: AppPalette.of(context).muted,
                               size: 20,
                             ),
                           ),
@@ -396,7 +405,9 @@ class _CalendarTabState extends State<CalendarTab> {
                           Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: .8),
+                              color: AppPalette.of(
+                                context,
+                              ).surface.withValues(alpha: .8),
                               borderRadius: BorderRadius.circular(30),
                               border: Border.all(
                                 color: _accent.withValues(alpha: .12),
@@ -435,7 +446,7 @@ class _CalendarTabState extends State<CalendarTab> {
                                             fontWeight: FontWeight.w700,
                                             color: view == option
                                                 ? Colors.white
-                                                : _soft,
+                                                : AppPalette.of(context).muted,
                                           ),
                                         ),
                                       ),
@@ -457,20 +468,51 @@ class _CalendarTabState extends State<CalendarTab> {
                                 '{count} event',
                                 '{count} events',
                               ),
-                              style: const TextStyle(
-                                color: _soft,
+                              style: TextStyle(
+                                color: AppPalette.of(context).muted,
                                 fontSize: 12,
                               ),
                             ),
                         ],
                       ),
                       const SizedBox(height: 22),
-                      if (error != null)
+                      // A failed load — here or at launch — leaves the day
+                      // unknown: say so and offer a retry.
+                      if (error != null ||
+                          (!fetching &&
+                              !store.loadingEvents &&
+                              !store.hasEventsFor(date)))
                         Padding(
                           padding: const EdgeInsets.only(bottom: 16),
-                          child: Text(
-                            error!,
-                            style: const TextStyle(color: Colors.redAccent),
+                          child: Surface(
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.cloud_off_rounded,
+                                  size: 18,
+                                  color: Colors.redAccent,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    tr(
+                                      '{error} Free time can’t be shown until they load.',
+                                      {
+                                        'error': tr(
+                                          error ?? 'Could not load events.',
+                                        ),
+                                      },
+                                    ),
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                                TextButton(
+                                  key: const ValueKey('calendar-retry'),
+                                  onPressed: () => select(date, refresh: true),
+                                  child: const Text('Retry'),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       AnimatedSwitcher(
@@ -511,8 +553,47 @@ class _CalendarTabState extends State<CalendarTab> {
     );
   }
 
+  /// The outline of the event about to be created on a tapped slot.
+  Widget newEventSlot(int minute) {
+    final startsAt = DateTime(date.year, date.month, date.day, 0, minute);
+    final accent = AppPalette.of(context).accent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: .6), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.add_circle, color: accent, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'New event',
+                style: TextStyle(
+                  color: accent,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            formatClockRange(startsAt, startsAt.add(const Duration(hours: 1))),
+            style: TextStyle(color: AppPalette.of(context).muted, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget addPrompt(String label, int start) => Material(
-    color: Colors.white.withValues(alpha: .45),
+    color: AppPalette.of(context).surface.withValues(alpha: .45),
     borderRadius: BorderRadius.circular(16),
     child: InkWell(
       onTap: () => create(start),
@@ -525,13 +606,13 @@ class _CalendarTabState extends State<CalendarTab> {
         ),
         child: Row(
           children: [
-            const Icon(Icons.add, color: _accent, size: 17),
+            Icon(Icons.add, color: AppPalette.of(context).accent, size: 17),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
-                  color: _accent,
+                style: TextStyle(
+                  color: AppPalette.of(context).accent,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -549,11 +630,11 @@ class _CalendarTabState extends State<CalendarTab> {
       button: true,
       label: tr('{title}, {start} to {end}', {
         'title': event.title,
-        'start': event.start.format(context),
-        'end': event.end.format(context),
+        'start': formatClock(event.start),
+        'end': formatClock(event.end),
       }),
       child: Material(
-        color: Colors.white,
+        color: AppPalette.of(context).surface,
         borderRadius: BorderRadius.circular(18),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -575,7 +656,7 @@ class _CalendarTabState extends State<CalendarTab> {
                   maxLines: compact ? 1 : 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: _ink,
+                    color: AppPalette.of(context).ink,
                     fontSize: compact ? 12 : 14,
                     fontWeight: FontWeight.w700,
                     decoration: event.completed
@@ -585,10 +666,13 @@ class _CalendarTabState extends State<CalendarTab> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${event.start.format(context)} – ${event.end.format(context)}',
+                  '${formatClock(event.start)} – ${formatClock(event.end)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: _soft, fontSize: 11),
+                  style: TextStyle(
+                    color: AppPalette.of(context).muted,
+                    fontSize: 11,
+                  ),
                 ),
                 if (!compact) ...[
                   const SizedBox(height: 8),
@@ -639,10 +723,10 @@ class _CalendarTabState extends State<CalendarTab> {
                   DateFormat('E').format(DateTime(2024, 1, 1 + i)),
                   textAlign: TextAlign.center,
                   maxLines: 1,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: _soft,
+                    color: AppPalette.of(context).muted,
                   ),
                 ),
               ),
@@ -670,7 +754,9 @@ class _CalendarTabState extends State<CalendarTab> {
               onTap: () => select(day),
               child: Container(
                 decoration: BoxDecoration(
-                  color: selected ? _accent : Colors.white.withValues(alpha: .6),
+                  color: selected
+                      ? _accent
+                      : AppPalette.of(context).surface.withValues(alpha: .6),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: today && !selected
@@ -687,7 +773,9 @@ class _CalendarTabState extends State<CalendarTab> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: selected ? Colors.white : _ink,
+                        color: selected
+                            ? Colors.white
+                            : AppPalette.of(context).ink,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -705,7 +793,9 @@ class _CalendarTabState extends State<CalendarTab> {
                               margin: const EdgeInsets.symmetric(horizontal: 1),
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: selected ? Colors.white : _accent,
+                                color: selected
+                                    ? Colors.white
+                                    : AppPalette.of(context).accent,
                               ),
                             ),
                         ],
@@ -724,16 +814,20 @@ class _CalendarTabState extends State<CalendarTab> {
   Widget buildAgenda(List<CalendarEvent> events) => Column(
     children: [
       if (events.isEmpty) ...[
-        const Padding(
+        Padding(
           padding: EdgeInsets.symmetric(vertical: 30),
           child: Column(
             children: [
-              Icon(Icons.wb_sunny_outlined, color: _accent, size: 36),
+              Icon(
+                Icons.wb_sunny_outlined,
+                color: AppPalette.of(context).accent,
+                size: 36,
+              ),
               SizedBox(height: 14),
               Text(
                 'A little room to breathe',
                 style: TextStyle(
-                  color: _ink,
+                  color: AppPalette.of(context).ink,
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                 ),
@@ -741,7 +835,7 @@ class _CalendarTabState extends State<CalendarTab> {
               SizedBox(height: 8),
               Text(
                 'No events scheduled for this day.',
-                style: TextStyle(color: _soft),
+                style: TextStyle(color: AppPalette.of(context).muted),
               ),
             ],
           ),
@@ -760,11 +854,11 @@ class _CalendarTabState extends State<CalendarTab> {
                   child: Text(
                     events[i].occurrenceStartAt.isBefore(date)
                         ? 'Earlier'
-                        : DateFormat(
-                            'h:mm\na',
-                          ).format(events[i].occurrenceStartAt),
-                    style: const TextStyle(
-                      color: _soft,
+                        : formatClockAt(
+                            events[i].occurrenceStartAt,
+                          ).replaceFirst(' ', '\n'),
+                    style: TextStyle(
+                      color: AppPalette.of(context).muted,
                       fontWeight: FontWeight.w700,
                       fontSize: 12,
                     ),
@@ -868,7 +962,12 @@ class _CalendarTabState extends State<CalendarTab> {
       cursor = math.max(cursor, minute(event.occurrenceEndAt));
     }
     if (1440 - cursor >= 60) gaps.add((start: cursor, end: 1440));
+    // Free time is only claimed for a day whose events really loaded; after a
+    // failed fetch an empty day is unknown, not free.
+    final verified =
+        error == null && !fetching && StoreScope.of(context).hasEventsFor(date);
     final current = now.hour * 60 + now.minute;
+    final pending = pendingSlot;
     return Column(
       children: [
         if (first > 0)
@@ -876,8 +975,10 @@ class _CalendarTabState extends State<CalendarTab> {
             padding: const EdgeInsets.only(bottom: 20),
             child: TextButton.icon(
               style: TextButton.styleFrom(
-                foregroundColor: _soft,
-                backgroundColor: Colors.white.withValues(alpha: .5),
+                foregroundColor: AppPalette.of(context).muted,
+                backgroundColor: AppPalette.of(
+                  context,
+                ).surface.withValues(alpha: .5),
                 minimumSize: const Size(double.infinity, 48),
               ),
               onPressed: () => setState(() => expanded = !expanded),
@@ -911,11 +1012,11 @@ class _CalendarTabState extends State<CalendarTab> {
                           SizedBox(
                             width: 48,
                             child: Text(
-                              DateFormat.j().format(DateTime(2000, 1, 1, hour)),
-                              style: const TextStyle(
+                              formatHour(hour),
+                              style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
-                                color: _soft,
+                                color: AppPalette.of(context).muted,
                               ),
                             ),
                           ),
@@ -923,13 +1024,42 @@ class _CalendarTabState extends State<CalendarTab> {
                           Expanded(
                             child: Container(
                               height: 1,
-                              color: _soft.withValues(alpha: .13),
+                              color: AppPalette.of(
+                                context,
+                              ).muted.withValues(alpha: .13),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  for (final gap in gaps)
+                  // Tapping empty time opens the form on that slot. A drag is a
+                  // scroll, not a tap, so scrolling never starts an event, and
+                  // event cards above this layer still open their details.
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    left: 58,
+                    right: 0,
+                    child: GestureDetector(
+                      key: const ValueKey('timeline-slots'),
+                      behavior: HitTestBehavior.opaque,
+                      onTapUp: (details) {
+                        final tapped = base + details.localPosition.dy / scale;
+                        final slot = (tapped ~/ 30) * 30;
+                        if (slot >= 0 && slot < 1440) create(slot);
+                      },
+                    ),
+                  ),
+                  if (pending != null && pending >= base)
+                    Positioned(
+                      top: (pending - base) * scale + 4,
+                      left: 58,
+                      right: 0,
+                      height: hourHeight - 8,
+                      child: IgnorePointer(child: newEventSlot(pending)),
+                    ),
+                  for (final gap
+                      in verified ? gaps : const <({int start, int end})>[])
                     Positioned(
                       top: (gap.start - base) * scale + 14,
                       left: 58,
@@ -977,8 +1107,8 @@ class _CalendarTabState extends State<CalendarTab> {
                             Container(
                               width: 8,
                               height: 8,
-                              decoration: const BoxDecoration(
-                                color: Color(0xffe11d48),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.error,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -996,13 +1126,13 @@ class _CalendarTabState extends State<CalendarTab> {
                                 vertical: 4,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xffe11d48),
+                                color: Theme.of(context).colorScheme.error,
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                TimeOfDay.fromDateTime(now).format(context),
-                                style: const TextStyle(
-                                  color: Colors.white,
+                                formatClockAt(now),
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onError,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
                                 ),

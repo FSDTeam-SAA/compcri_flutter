@@ -131,7 +131,9 @@ class NoteTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: const Color(0xffeee4ff).withValues(alpha: .65),
+        color: AppPalette.of(
+          context,
+        ).wash(const Color(0xffeee4ff)).withValues(alpha: .65),
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
@@ -147,7 +149,7 @@ class NoteTile extends StatelessWidget {
                 Icon(
                   note.isVoice ? Icons.mic_none : Icons.sticky_note_2_outlined,
                   size: 19,
-                  color: lilac,
+                  color: AppPalette.of(context).accent,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -166,8 +168,8 @@ class NoteTile extends StatelessWidget {
                           note.body,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: muted,
+                          style: TextStyle(
+                            color: AppPalette.of(context).muted,
                             fontSize: 13,
                             height: 1.35,
                           ),
@@ -177,7 +179,10 @@ class NoteTile extends StatelessWidget {
                         const SizedBox(height: 6),
                         Text(
                           stamp,
-                          style: const TextStyle(color: muted, fontSize: 11),
+                          style: TextStyle(
+                            color: AppPalette.of(context).muted,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ],
@@ -187,7 +192,7 @@ class NoteTile extends StatelessWidget {
                   icon: Icon(
                     note.pinned ? Icons.push_pin : Icons.more_vert,
                     size: 19,
-                    color: note.pinned ? purple : null,
+                    color: note.pinned ? AppPalette.of(context).accent : null,
                   ),
                   onSelected: (value) async {
                     if (value == 'pin') {
@@ -313,7 +318,11 @@ class _NoteEditorState extends State<NoteEditor> {
               child: Surface(
                 child: Row(
                   children: [
-                    const Icon(Icons.mic_none, size: 18, color: purple),
+                    Icon(
+                      Icons.mic_none,
+                      size: 18,
+                      color: AppPalette.of(context).accent,
+                    ),
                     const SizedBox(width: 9),
                     Expanded(
                       child: Text(
@@ -322,7 +331,10 @@ class _NoteEditorState extends State<NoteEditor> {
                             : tr('Dictated note · {duration}', {
                                 'duration': note.durationLabel,
                               }),
-                        style: const TextStyle(fontSize: 12, color: muted),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppPalette.of(context).muted,
+                        ),
                       ),
                     ),
                   ],
@@ -420,12 +432,14 @@ class _VoiceNoteButtonState extends State<VoiceNoteButton> {
         height: 48,
         decoration: BoxDecoration(
           gradient: recording ? null : violetGradient,
-          color: recording ? const Color(0xffff4e2c) : null,
+          color: recording ? Theme.of(context).colorScheme.error : null,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Icon(
           recording ? Icons.stop : Icons.mic_none,
-          color: Colors.white,
+          color: recording
+              ? Theme.of(context).colorScheme.onError
+              : Colors.white,
           size: 23,
         ),
       ),
@@ -459,7 +473,10 @@ class NotesPreview extends StatelessWidget {
             padding: const EdgeInsets.only(top: 2, bottom: 4),
             child: Text(
               'Nothing noted yet. Tap "All notes" to say or write one.',
-              style: const TextStyle(color: muted, fontSize: 13),
+              style: TextStyle(
+                color: AppPalette.of(context).muted,
+                fontSize: 13,
+              ),
             ),
           )
         else

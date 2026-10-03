@@ -313,7 +313,7 @@ class EventApi {
     String? posterMediaId,
     String? recurrenceRrule,
     String? groupId,
-    List<int> reminderMinutes = const <int>[],
+    List<int> reminderMinutes = const <int>[10],
     String? timeZone,
     bool overrideConflicts = false,
   }) async => EventMutation.fromJson(
@@ -609,7 +609,7 @@ class NetworkApi {
     required DateTime endsAt,
     String? description,
     String? location,
-    List<int> reminderMinutes = const <int>[],
+    List<int> reminderMinutes = const <int>[10],
     bool overrideConflicts = false,
   }) async {
     final data = _map(
@@ -679,10 +679,8 @@ class AiApi {
       _client.delete('/ai/conversations/$id');
 
   /// Keeps a conversation past the retention window, or lets it rejoin it.
-  Future<void> setConversationSaved(String id, bool saved) => _client.patch(
-    '/ai/conversations/$id/saved',
-    body: {'saved': saved},
-  );
+  Future<void> setConversationSaved(String id, bool saved) =>
+      _client.patch('/ai/conversations/$id/saved', body: {'saved': saved});
 
   Future<AiTurn> sendMessage({
     required String conversationId,
@@ -930,12 +928,14 @@ class LegalApi {
     required String email,
     required String note,
     String? phone,
+    String? subject,
     List<String> mediaIds = const <String>[],
   }) => _client.post(
     '/support-requests',
     body: {
       'name': name,
       'email': email,
+      if (subject != null && subject.isNotEmpty) 'subject': subject,
       'note': note,
       if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
       if (mediaIds.isNotEmpty) 'mediaIds': mediaIds,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart' hide Text;
 import 'package:image_picker/image_picker.dart';
@@ -10,13 +11,15 @@ import '../core/store.dart';
 import '../core/time.dart';
 import 'conflicts.dart';
 import 'notes.dart';
+import 'past_time.dart';
+import 'poster.dart';
+import 'time_picker.dart';
 import '../core/i18n.dart';
 
 /// Opens a picker and returns the chosen file path, or null.
 Future<String?> pickImagePath(BuildContext context) async {
   final source = await showModalBottomSheet<ImageSource>(
     context: context,
-    backgroundColor: Colors.white,
     builder: (sheetContext) => SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -67,7 +70,9 @@ class EventTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: const Color(0xffeee4ff).withValues(alpha: .65),
+        color: AppPalette.of(
+          context,
+        ).wash(const Color(0xffeee4ff)).withValues(alpha: .65),
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
@@ -94,12 +99,12 @@ class EventTile extends StatelessWidget {
                       ),
                     ),
                     if (event.isShared)
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.only(right: 8),
                         child: Icon(
                           Icons.people_outline,
                           size: 16,
-                          color: lilac,
+                          color: AppPalette.of(context).accent,
                         ),
                       )
                     else
@@ -142,18 +147,25 @@ class EventTile extends StatelessWidget {
                 ),
                 Row(
                   children: [
-                    const Icon(Icons.schedule, size: 15, color: muted),
+                    Icon(
+                      Icons.schedule,
+                      size: 15,
+                      color: AppPalette.of(context).muted,
+                    ),
                     const SizedBox(width: 8),
                     Text(
-                      '${event.start.format(context)} – ${event.end.format(context)}',
-                      style: const TextStyle(color: muted, fontSize: 12),
+                      '${formatClock(event.start)} – ${formatClock(event.end)}',
+                      style: TextStyle(
+                        color: AppPalette.of(context).muted,
+                        fontSize: 12,
+                      ),
                     ),
                     if (event.completed) ...[
                       const Spacer(),
-                      const Icon(
+                      Icon(
                         Icons.check_circle_outline,
                         size: 17,
-                        color: purple,
+                        color: AppPalette.of(context).accent,
                       ),
                     ],
                   ],
@@ -188,9 +200,9 @@ class _EventFormState extends State<EventForm> {
       location = TextEditingController(),
       description = TextEditingController();
 
-  DateTime date = DateTime.now();
-  TimeOfDay start = const TimeOfDay(hour: 9, minute: 0),
-      end = const TimeOfDay(hour: 10, minute: 0);
+  // Set in initState: the time asked for, or the next full hour.
+  late DateTime date;
+  late TimeOfDay start, end;
   // A new event reminds by default. Left on 'None', an event people expected
   // to be reminded about simply passed in silence, which reads as push being
   // broken rather than as a field they never opened. Editing an existing event
@@ -200,10 +212,18 @@ class _EventFormState extends State<EventForm> {
   /// Newly uploaded poster id, or the existing one when unchanged.
   String? posterMediaId;
   String? posterUrl;
+
+  /// The picked file, previewed until the saved poster's URL comes back.
+  String? posterPath;
+  double? posterAspect;
   bool posterCleared = false;
 
   /// For a repeating event, whether the pending save targets the whole series.
   bool seriesEdit = true;
+
+  /// Set when the user chose to record a time that has already passed, which
+  /// is saved without reminders.
+  bool savingPast = false;
 
   /// Live verdict on the time being picked, refreshed whenever it changes.
   ConflictReport? conflictReport;
@@ -217,12 +237,10 @@ class _EventFormState extends State<EventForm> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _checkConflicts();
     });
-    final initial = widget.initialStart;
-    if (initial != null) {
-      date = DateUtils.dateOnly(initial);
-      start = TimeOfDay.fromDateTime(initial);
-      end = TimeOfDay.fromDateTime(initial.add(const Duration(hours: 1)));
-    }
+    final initial = widget.initialStart ?? upcomingStart(DateTime.now());
+    date = DateUtils.dateOnly(initial);
+    start = TimeOfDay.fromDateTime(initial);
+    end = TimeOfDay.fromDateTime(initial.add(const Duration(hours: 1)));
     final event = widget.event;
     if (event != null) {
       title.text = event.title;
@@ -234,6 +252,7 @@ class _EventFormState extends State<EventForm> {
       reminder = event.reminder;
       repeat = event.repeat;
       posterUrl = event.poster?.secureUrl;
+      posterAspect = event.poster?.aspectRatio;
       posterMediaId = event.poster?.id;
     }
   }
@@ -256,33 +275,23 @@ class _EventFormState extends State<EventForm> {
     return (startsAt, endsAt);
   }
 
-  static int _minutesOf(TimeOfDay time) => time.hour * 60 + time.minute;
-
-  /// Keeps the end after the start.
-  ///
-  /// Moving the start past the end used to leave the form holding a range the
-  /// server rejects — "Event end must be after its start" — on every save, with
-  /// nothing on screen pointing at the end field. Dragging the end along keeps
-  /// the length the event already had, which is what moving an appointment
-  /// normally means.
-  void _keepRangeOrdered(int startBefore, int endBefore) {
-    if (_minutesOf(end) > _minutesOf(start)) return;
-    final length = endBefore - startBefore;
-    final shifted = _minutesOf(start) + (length > 0 ? length : 60);
-    // A start late enough to push the end past midnight parks it at 23:59
-    // rather than wrapping it around to an earlier time.
-    end = shifted >= 24 * 60
-        ? const TimeOfDay(hour: 23, minute: 59)
-        : TimeOfDay(hour: shifted ~/ 60, minute: shifted % 60);
-  }
-
   /// Applies a date or time change and re-checks it once picking settles.
+  ///
+  /// Moving the start carries the end along so the event keeps its length,
+  /// which is what moving an appointment normally means. The end may land on
+  /// the next day; the duration line under the times says so. (Clamping it to
+  /// 23:59 used to shorten late events, and comparing bare clock times reset
+  /// the end of any overnight event whenever its date changed.)
   void _changeTime(VoidCallback change) {
-    final startBefore = _minutesOf(start);
-    final endBefore = _minutesOf(end);
+    final (startsBefore, endsBefore) = _range();
+    final length = endsBefore.difference(startsBefore);
+    final startBefore = start, endBefore = end;
     setState(() {
       change();
-      _keepRangeOrdered(startBefore, endBefore);
+      // A change that set the end itself (a suggested slot) keeps it.
+      if (start != startBefore && end == endBefore) {
+        end = TimeOfDay.fromDateTime(combine(date, start).add(length));
+      }
     });
     _conflictDebounce?.cancel();
     setState(() => checkingConflicts = true);
@@ -290,6 +299,39 @@ class _EventFormState extends State<EventForm> {
       const Duration(milliseconds: 350),
       _checkConflicts,
     );
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2040),
+    );
+    if (picked != null && mounted) _changeTime(() => date = picked);
+  }
+
+  Future<void> _pickStart() async {
+    final picked = await showClockPicker(
+      context,
+      title: tr('Start time'),
+      date: date,
+      initial: start,
+    );
+    if (picked != null && mounted) _changeTime(() => start = picked);
+  }
+
+  Future<void> _pickEnd() async {
+    final picked = await showClockPicker(
+      context,
+      title: tr('End time'),
+      date: date,
+      initial: end,
+      note: (time) => !combine(date, time).isAfter(combine(date, start))
+          ? tr('Ends the next day')
+          : null,
+    );
+    if (picked != null && mounted) _changeTime(() => end = picked);
   }
 
   void _applySlot(TimeSlot slot) => _changeTime(() {
@@ -349,8 +391,21 @@ class _EventFormState extends State<EventForm> {
     setState(() {
       posterMediaId = mediaId;
       posterUrl = null;
+      posterAspect = null;
+      posterPath = path;
       posterCleared = false;
     });
+  }
+
+  /// Whether this save would put the event's start in the past. A repeating
+  /// series still has its future dates, and an edit that leaves an
+  /// already-past event's time alone is not a new mistake.
+  bool _startsInPast(DateTime startsAt) {
+    if (!startsAt.isBefore(DateTime.now())) return false;
+    final event = widget.event;
+    final series = event == null || seriesEdit;
+    if (series && repeat != 'Never') return false;
+    return event == null || !startsAt.isAtSameMomentAs(event.occurrenceStartAt);
   }
 
   Future<void> save() async {
@@ -364,6 +419,24 @@ class _EventFormState extends State<EventForm> {
       final scope = await _askEditScope();
       if (scope == null || !mounted) return;
       seriesEdit = scope == _EditScope.series;
+    }
+
+    // A start that has already passed is nearly always the wrong day picked by
+    // mistake — today instead of tomorrow. Ask before saving a missed
+    // appointment, and never move the date on anyone's behalf.
+    savingPast = false;
+    if (_startsInPast(startsAt)) {
+      final choice = await showPastTimeSheet(
+        context,
+        startsAt: startsAt,
+        endsAt: endsAt,
+      );
+      if (choice == null || !mounted) return;
+      if (choice == PastTimeChoice.change) {
+        await _pickDate();
+        return;
+      }
+      savingPast = true;
     }
 
     // Settle a clash before saving, instead of after the server refuses it.
@@ -404,7 +477,7 @@ class _EventFormState extends State<EventForm> {
   Future<_EditScope?> _askEditScope() => showDialog<_EditScope>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      backgroundColor: Colors.white,
+      backgroundColor: AppPalette.of(dialogContext).surface,
       title: const Text('Repeating event'),
       content: const Text('Apply your changes to which events?'),
       actions: [
@@ -442,7 +515,9 @@ class _EventFormState extends State<EventForm> {
               location: location.text.trim(),
               posterMediaId: posterMediaId,
               recurrenceRrule: CalendarEvent.rruleForLabel(repeat),
-              reminderMinutes: CalendarEvent.minutesForLabel(reminder),
+              reminderMinutes: savingPast
+                  ? const <int>[]
+                  : CalendarEvent.minutesForLabel(reminder),
               overrideConflicts: overrideConflicts,
               groupId: widget.groupId,
             )
@@ -465,7 +540,11 @@ class _EventFormState extends State<EventForm> {
               location: location.text.trim(),
               posterMediaId: posterCleared ? null : posterMediaId,
               recurrenceRrule: CalendarEvent.rruleForLabel(repeat),
-              reminderMinutes: CalendarEvent.minutesForLabel(reminder),
+              reminderMinutes: savingPast
+                  ? const <int>[]
+                  : reminder == event.reminder
+                  ? event.reminderMinutes
+                  : CalendarEvent.minutesForLabel(reminder),
               overrideConflicts: overrideConflicts,
             ),
       success: event == null
@@ -510,11 +589,18 @@ class _EventFormState extends State<EventForm> {
           borderRadius: BorderRadius.circular(9),
           child: InputDecorator(
             decoration: InputDecoration(
-              suffixIcon: Icon(icon, color: lilac, size: 20),
+              suffixIcon: Icon(
+                icon,
+                color: AppPalette.of(context).accent,
+                size: 20,
+              ),
             ),
             child: Text(
               value,
-              style: const TextStyle(fontSize: 12, color: muted),
+              style: TextStyle(
+                fontSize: 12,
+                color: AppPalette.of(context).muted,
+              ),
             ),
           ),
         ),
@@ -535,71 +621,83 @@ class _EventFormState extends State<EventForm> {
           children: [
             const Text('Flyer / Event Poster'),
             const SizedBox(height: 10),
-            InkWell(
-              onTap: _choosePoster,
-              child: Container(
-                height: 90,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: lilac, width: .8),
-                ),
-                child: hasPoster
-                    ? Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: posterUrl != null
-                                ? Image.network(posterUrl!, fit: BoxFit.cover)
-                                : const Center(
-                                    child: Text(
-                                      'Poster ready to save',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: muted,
-                                      ),
-                                    ),
-                                  ),
-                          ),
-                          Positioned(
-                            top: 4,
-                            right: 4,
-                            child: IconButton(
-                              tooltip: tr('Remove poster'),
-                              style: IconButton.styleFrom(
-                                backgroundColor: Colors.white70,
-                              ),
-                              onPressed: () => setState(() {
-                                posterCleared = true;
-                                posterMediaId = null;
-                                posterUrl = null;
-                              }),
-                              icon: const Icon(Icons.close, size: 16),
-                            ),
-                          ),
-                        ],
-                      )
-                    : const Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.add_photo_alternate_outlined,
-                            color: lilac,
-                          ),
-                          SizedBox(height: 10),
-                          Text(
-                            'JPG, PNG or WEBP · tap to browse',
-                            style: TextStyle(fontSize: 11, color: muted),
-                          ),
-                        ],
-                      ),
+            if (hasPoster && (posterUrl != null || posterPath != null)) ...[
+              PosterImage(
+                image: posterUrl != null
+                    ? NetworkImage(posterUrl!)
+                    : FileImage(File(posterPath!)) as ImageProvider,
+                heroTag: posterUrl ?? posterPath!,
+                aspectRatio: posterAspect,
               ),
-            ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: PrimaryButton(
+                      'Change image',
+                      key: const ValueKey('poster-change'),
+                      icon: Icons.photo_library_outlined,
+                      outline: true,
+                      onPressed: _choosePoster,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: PrimaryButton(
+                      'Remove',
+                      key: const ValueKey('poster-remove'),
+                      icon: Icons.delete_outline,
+                      outline: true,
+                      danger: true,
+                      onPressed: () => setState(() {
+                        posterCleared = true;
+                        posterMediaId = null;
+                        posterUrl = null;
+                        posterPath = null;
+                        posterAspect = null;
+                      }),
+                    ),
+                  ),
+                ],
+              ),
+            ] else
+              InkWell(
+                key: const ValueKey('poster-add'),
+                onTap: _choosePoster,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 110,
+                  decoration: BoxDecoration(
+                    color: AppPalette.of(context).surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppPalette.of(context).accent,
+                      width: .8,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.add_photo_alternate_outlined,
+                        color: AppPalette.of(context).accent,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'JPG, PNG or WEBP · tap to browse',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppPalette.of(context).muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             const SizedBox(height: 16),
             AppField(
               'Title',
-              hint: 'Lunch with Ana',
+              hint: 'Add a title',
               controller: title,
               validator: (v) =>
                   v == null || v.trim().isEmpty ? 'Enter an event title' : null,
@@ -609,55 +707,23 @@ class _EventFormState extends State<EventForm> {
             // invited doubt about which zone an event was saved in.
             picker(
               'Date',
-              formatDay(date),
+              formatWeekdayDay(date),
               Icons.calendar_month_outlined,
-              () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: date,
-                  firstDate: DateTime(2020),
-                  lastDate: DateTime(2040),
-                );
-                if (picked != null) _changeTime(() => date = picked);
-              },
+              _pickDate,
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: picker(
-                    'Starts',
-                    start.format(context),
-                    Icons.schedule,
-                    () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: start,
-                      );
-                      if (picked != null) _changeTime(() => start = picked);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: picker(
-                    'End',
-                    end.format(context),
-                    Icons.schedule,
-                    () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: end,
-                      );
-                      if (picked != null) _changeTime(() => end = picked);
-                    },
-                  ),
-                ),
-              ],
+            _TimesCard(
+              start: start,
+              end: end,
+              range: _range(),
+              onStart: _pickStart,
+              onEnd: _pickEnd,
             ),
+            const SizedBox(height: 16),
             ConflictPanel(
               checking: checkingConflicts,
               report: conflictReport,
               onPick: _applySlot,
+              onChangeTime: _pickStart,
             ),
             Row(
               children: [
@@ -665,7 +731,10 @@ class _EventFormState extends State<EventForm> {
                   child: SelectField(
                     'Reminder',
                     value: reminder,
-                    values: CalendarEvent.reminderOptions,
+                    values: {
+                      ...CalendarEvent.reminderOptions,
+                      reminder,
+                    }.toList(),
                     onChanged: (v) => setState(() => reminder = v),
                   ),
                 ),
@@ -680,10 +749,10 @@ class _EventFormState extends State<EventForm> {
                 ),
               ],
             ),
-            AppField('Location', hint: 'Where is it?', controller: location),
+            AppField('Location', hint: 'Add a location', controller: location),
             AppField(
               'Description',
-              hint: 'Enter about your event...',
+              hint: 'Add notes about your event...',
               controller: description,
               lines: 3,
             ),
@@ -763,7 +832,7 @@ class _EventDetailsState extends State<EventDetails> {
       final scope = await showDialog<_EditScope>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppPalette.of(dialogContext).surface,
           title: const Text('Delete repeating event'),
           content: const Text('Remove which events?'),
           actions: [
@@ -823,14 +892,10 @@ class _EventDetailsState extends State<EventDetails> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (event.hasPoster)
-            ClipRRect(
-              borderRadius: const BorderRadius.all(Radius.circular(8)),
-              child: Image.network(
-                event.poster!.secureUrl,
-                height: 170,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const SizedBox.shrink(),
-              ),
+            PosterImage(
+              image: NetworkImage(event.poster!.secureUrl),
+              heroTag: event.poster!.secureUrl,
+              aspectRatio: event.poster!.aspectRatio,
             ),
           const SizedBox(height: 18),
           Row(
@@ -859,7 +924,7 @@ class _EventDetailsState extends State<EventDetails> {
             event.description.isEmpty
                 ? 'No description added.'
                 : event.description,
-            style: const TextStyle(color: muted, height: 1.45),
+            style: TextStyle(color: AppPalette.of(context).muted, height: 1.45),
           ),
           const SizedBox(height: 18),
           ...[
@@ -873,10 +938,10 @@ class _EventDetailsState extends State<EventDetails> {
                     event.occurrenceStartAt,
                     event.occurrenceEndAt,
                   )
-                  ? '${event.start.format(context)} – ${event.end.format(context)}'
-                  : '${event.start.format(context)} → '
+                  ? '${formatClock(event.start)} – ${formatClock(event.end)}'
+                  : '${formatClock(event.start)} → '
                         '${formatDay(event.occurrenceEndAt)}, '
-                        '${event.end.format(context)}',
+                        '${formatClock(event.end)}',
             ),
             (
               Icons.location_on_outlined,
@@ -889,7 +954,7 @@ class _EventDetailsState extends State<EventDetails> {
               padding: const EdgeInsets.only(bottom: 18),
               child: Row(
                 children: [
-                  Icon(row.$1, color: lilac, size: 23),
+                  Icon(row.$1, color: AppPalette.of(context).accent, size: 23),
                   const SizedBox(width: 12),
                   Expanded(child: Text(row.$2)),
                 ],
@@ -977,7 +1042,7 @@ class _EventDetailsState extends State<EventDetails> {
 
     if (!event.canRespond) {
       return Surface(
-        color: const Color(0xffe2edff),
+        color: AppPalette.of(context).wash(const Color(0xffe2edff)),
         child: Text(
           tr('Shared with you · {access}', {
             'access': tr(
@@ -986,7 +1051,7 @@ class _EventDetailsState extends State<EventDetails> {
                   : 'view only',
             ),
           }),
-          style: const TextStyle(fontSize: 12, color: muted),
+          style: TextStyle(fontSize: 12, color: AppPalette.of(context).muted),
         ),
       );
     }
@@ -998,12 +1063,15 @@ class _EventDetailsState extends State<EventDetails> {
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Surface(
-              color: const Color(0xffe2edff),
+              color: AppPalette.of(context).wash(const Color(0xffe2edff)),
               child: Text(
                 tr('Your response: {status}', {
                   'status': tr(event.rsvpStatus!.toLowerCase()),
                 }),
-                style: const TextStyle(fontSize: 12, color: muted),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppPalette.of(context).muted,
+                ),
               ),
             ),
           ),
@@ -1103,7 +1171,10 @@ class _ShareEventScreenState extends State<ShareEventScreen> {
         children: [
           const Text('Share Event', style: TextStyle(fontSize: 16)),
           const SizedBox(height: 8),
-          Text(widget.event.title, style: const TextStyle(color: muted)),
+          Text(
+            widget.event.title,
+            style: TextStyle(color: AppPalette.of(context).muted),
+          ),
           const SizedBox(height: 26),
           const Text('Invited People Can', style: TextStyle(fontSize: 16)),
           const SizedBox(height: 10),
@@ -1114,8 +1185,8 @@ class _ShareEventScreenState extends State<ShareEventScreen> {
                 onTap: () => setState(() => permission = value),
                 child: Surface(
                   color: permission == value
-                      ? const Color(0xffe2edff)
-                      : const Color(0xfffff5f7),
+                      ? AppPalette.of(context).wash(const Color(0xffe2edff))
+                      : AppPalette.of(context).wash(const Color(0xfffff5f7)),
                   padding: const EdgeInsets.all(10),
                   child: Row(
                     children: [
@@ -1123,7 +1194,9 @@ class _ShareEventScreenState extends State<ShareEventScreen> {
                         permission == value
                             ? Icons.radio_button_checked
                             : Icons.radio_button_off,
-                        color: permission == value ? purple : muted,
+                        color: permission == value
+                            ? AppPalette.of(context).accent
+                            : AppPalette.of(context).muted,
                         size: 21,
                       ),
                       const SizedBox(width: 12),
@@ -1137,7 +1210,10 @@ class _ShareEventScreenState extends State<ShareEventScreen> {
                                 : value == 'Make changes'
                                 ? 'Can edit event details'
                                 : 'Can accept, decline, or maybe',
-                            style: const TextStyle(color: muted, fontSize: 10),
+                            style: TextStyle(
+                              color: AppPalette.of(context).muted,
+                              fontSize: 10,
+                            ),
                           ),
                         ],
                       ),
@@ -1240,10 +1316,10 @@ class _ShareEventScreenState extends State<ShareEventScreen> {
             setState(() => chosen ? selected.remove(id) : selected.add(id)),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppPalette.of(context).surface,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: chosen ? purple : const Color(0xffeee5fa),
+              color: chosen ? purple : AppPalette.of(context).border,
               width: chosen ? 1.5 : .7,
             ),
           ),
@@ -1252,10 +1328,13 @@ class _ShareEventScreenState extends State<ShareEventScreen> {
             title: Text(title, style: const TextStyle(fontSize: 13)),
             subtitle: Text(
               subtitle,
-              style: const TextStyle(fontSize: 11, color: muted),
+              style: TextStyle(
+                fontSize: 11,
+                color: AppPalette.of(context).muted,
+              ),
             ),
             trailing: chosen
-                ? const Icon(Icons.check_circle, color: purple)
+                ? Icon(Icons.check_circle, color: AppPalette.of(context).accent)
                 : null,
           ),
         ),
@@ -1308,11 +1387,14 @@ class _EventNotesState extends State<_EventNotes> {
         ),
         const SizedBox(height: 8),
         if (notes.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(bottom: 18),
             child: Text(
               'No notes for this event yet.',
-              style: TextStyle(color: muted, fontSize: 13),
+              style: TextStyle(
+                color: AppPalette.of(context).muted,
+                fontSize: 13,
+              ),
             ),
           )
         else
@@ -1321,6 +1403,96 @@ class _EventNotesState extends State<_EventNotes> {
           ),
         const SizedBox(height: 4),
       ],
+    );
+  }
+}
+
+/// Start and end side by side with the length between them, so the whole
+/// span reads at a glance before saving.
+class _TimesCard extends StatelessWidget {
+  const _TimesCard({
+    required this.start,
+    required this.end,
+    required this.range,
+    required this.onStart,
+    required this.onEnd,
+  });
+
+  final TimeOfDay start, end;
+  final (DateTime, DateTime) range;
+  final VoidCallback onStart, onEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final (startsAt, endsAt) = range;
+    final overnight = !DateUtils.isSameDay(startsAt, endsAt);
+    Widget row(String label, TimeOfDay time, VoidCallback onTap, Key key) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(label, style: const TextStyle(fontSize: 15)),
+              ),
+              Material(
+                color: AppPalette.of(context).wash(const Color(0xfff1ebff)),
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  key: key,
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: onTap,
+                  child: Container(
+                    width: 150,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 11,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            formatClock(time),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.keyboard_arrow_down,
+                          color: AppPalette.of(context).accent,
+                          size: 22,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+    return Surface(
+      padding: const EdgeInsets.fromLTRB(16, 6, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          row(tr('Starts'), start, onStart, const ValueKey('event-start')),
+          Divider(height: 1, color: AppPalette.of(context).border),
+          row(tr('Ends'), end, onEnd, const ValueKey('event-end')),
+          Divider(height: 1, color: AppPalette.of(context).border),
+          const SizedBox(height: 10),
+          Text(
+            [
+              tr('Duration: {length}', {
+                'length': formatDuration(endsAt.difference(startsAt)),
+              }),
+              if (overnight) tr('ends {day}', {'day': formatShortDay(endsAt)}),
+            ].join(' · '),
+            key: const ValueKey('event-duration'),
+            style: TextStyle(fontSize: 13, color: AppPalette.of(context).muted),
+          ),
+        ],
+      ),
     );
   }
 }

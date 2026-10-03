@@ -34,49 +34,52 @@ class _NetworkTabState extends State<NetworkTab> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, update) => AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppPalette.of(dialogContext).surface,
           title: const Text('Add Contact Code', style: TextStyle(fontSize: 17)),
           content: Form(
             key: form,
             child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Ask your contact for the code shown on their profile.',
-                style: TextStyle(fontSize: 11, color: muted),
-              ),
-              const SizedBox(height: 12),
-              AppField(
-                '',
-                hint: 'e.g. JOHN-456-FA',
-                controller: input,
-                validator: (value) => (value ?? '').trim().isEmpty
-                    ? 'Enter the contact code'
-                    : null,
-              ),
-              SelectField(
-                'Relation',
-                value: relation,
-                values: const [
-                  'Friend',
-                  'Family',
-                  'Coworker',
-                  'Assistant',
-                  'Other',
-                ],
-                onChanged: (value) => update(() => relation = value),
-              ),
-              PrimaryButton(
-                'Send request',
-                onPressed: () {
-                  // Validating keeps the dialog open and shows why, instead
-                  // of the tap appearing to do nothing (QA F03).
-                  if (form.currentState?.validate() != true) return;
-                  Navigator.pop(dialogContext, true);
-                },
-              ),
-            ],
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Ask your contact for the code shown on their profile.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppPalette.of(context).muted,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                AppField(
+                  '',
+                  hint: 'e.g. JOHN-456-FA',
+                  controller: input,
+                  validator: (value) => (value ?? '').trim().isEmpty
+                      ? 'Enter the contact code'
+                      : null,
+                ),
+                SelectField(
+                  'Relation',
+                  value: relation,
+                  values: const [
+                    'Friend',
+                    'Family',
+                    'Coworker',
+                    'Assistant',
+                    'Other',
+                  ],
+                  onChanged: (value) => update(() => relation = value),
+                ),
+                PrimaryButton(
+                  'Send request',
+                  onPressed: () {
+                    // Validating keeps the dialog open and shows why, instead
+                    // of the tap appearing to do nothing (QA F03).
+                    if (form.currentState?.validate() != true) return;
+                    Navigator.pop(dialogContext, true);
+                  },
+                ),
+              ],
             ),
           ),
         ),
@@ -103,7 +106,7 @@ class _NetworkTabState extends State<NetworkTab> {
     final submitted = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.of(dialogContext).surface,
         title: const Text('New group', style: TextStyle(fontSize: 17)),
         content: Form(
           key: form,
@@ -200,13 +203,13 @@ class _NetworkTabState extends State<NetworkTab> {
                           vertical: 1,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xffff4e2c),
+                          color: Theme.of(context).colorScheme.error,
                           borderRadius: BorderRadius.circular(9),
                         ),
                         child: Text(
                           '$pending',
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onError,
                             fontSize: 9,
                           ),
                         ),
@@ -231,8 +234,8 @@ class _NetworkTabState extends State<NetworkTab> {
                         border: Border(
                           bottom: BorderSide(
                             color: groups == value
-                                ? purple
-                                : const Color(0xffe8e4f0),
+                                ? AppPalette.of(context).accent
+                                : AppPalette.of(context).border,
                             width: groups == value ? 2 : 1,
                           ),
                         ),
@@ -241,7 +244,9 @@ class _NetworkTabState extends State<NetworkTab> {
                         value ? 'Groups' : 'Contacts',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: groups == value ? purple : muted,
+                          color: groups == value
+                              ? AppPalette.of(context).accent
+                              : AppPalette.of(context).muted,
                         ),
                       ),
                     ),
@@ -293,7 +298,11 @@ class _NetworkTabState extends State<NetworkTab> {
             onChanged: (value) => setState(() => query = value),
             decoration: InputDecoration(
               hintText: tr('Search contact'),
-              prefixIcon: const Icon(Icons.search, color: lilac, size: 22),
+              prefixIcon: Icon(
+                Icons.search,
+                color: AppPalette.of(context).accent,
+                size: 22,
+              ),
             ),
           ),
         ),
@@ -307,7 +316,11 @@ class _NetworkTabState extends State<NetworkTab> {
                   value: value,
                   child: Text(
                     value,
-                    style: TextStyle(color: filter == value ? purple : null),
+                    style: TextStyle(
+                      color: filter == value
+                          ? AppPalette.of(context).accent
+                          : null,
+                    ),
                   ),
                 ),
               )
@@ -341,7 +354,10 @@ class _NetworkTabState extends State<NetworkTab> {
         children: [
           const Icon(Icons.groups, color: Color(0xffbbcbff), size: 36),
           const SizedBox(height: 6),
-          const Text('Join a Group', style: TextStyle(color: muted)),
+          Text(
+            'Join a Group',
+            style: TextStyle(color: AppPalette.of(context).muted),
+          ),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -400,9 +416,9 @@ class _NetworkTabState extends State<NetworkTab> {
             children: [
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                leading: const Icon(
+                leading: Icon(
                   Icons.groups_outlined,
-                  color: lilac,
+                  color: AppPalette.of(context).accent,
                   size: 32,
                 ),
                 title: Text(group.name, style: const TextStyle(fontSize: 14)),
@@ -412,9 +428,15 @@ class _NetworkTabState extends State<NetworkTab> {
                     '{count} member',
                     '{count} members',
                   ),
-                  style: const TextStyle(fontSize: 10, color: muted),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: AppPalette.of(context).muted,
+                  ),
                 ),
-                trailing: const Icon(Icons.chevron_right, color: muted),
+                trailing: Icon(
+                  Icons.chevron_right,
+                  color: AppPalette.of(context).muted,
+                ),
                 onTap: () async {
                   await go(context, '/group', group);
                   if (mounted) await store.loadNetwork(silent: true);
@@ -437,7 +459,7 @@ class InviteCode extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(9),
     decoration: BoxDecoration(
-      color: const Color(0xffe0f5f8),
+      color: AppPalette.of(context).wash(const Color(0xffe0f5f8)),
       borderRadius: BorderRadius.circular(8),
     ),
     child: Row(
@@ -446,7 +468,13 @@ class InviteCode extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(fontSize: 10, color: muted)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppPalette.of(context).muted,
+                ),
+              ),
               const SizedBox(height: 6),
               Text(code, style: const TextStyle(fontSize: 11)),
             ],
@@ -457,9 +485,13 @@ class InviteCode extends StatelessWidget {
             Clipboard.setData(ClipboardData(text: code));
             toast(context, tr('{label} copied', {'label': tr(label)}));
           },
-          child: const Padding(
+          child: Padding(
             padding: EdgeInsets.all(5),
-            child: Icon(Icons.copy, size: 14, color: Color(0xffa3c6cd)),
+            child: Icon(
+              Icons.copy,
+              size: 14,
+              color: AppPalette.of(context).muted,
+            ),
           ),
         ),
       ],
@@ -493,7 +525,7 @@ class PersonTile extends StatelessWidget {
         title: Text(person.name, style: const TextStyle(fontSize: 14)),
         subtitle: Text(
           person.relation.isEmpty ? person.email : person.relation,
-          style: const TextStyle(fontSize: 11, color: muted),
+          style: TextStyle(fontSize: 11, color: AppPalette.of(context).muted),
         ),
         trailing: trailing,
         onTap: onTap,
@@ -557,9 +589,9 @@ class _RequestsScreenState extends State<RequestsScreen> {
                                 Text(request.person.name),
                                 Text(
                                   request.person.email,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 11,
-                                    color: muted,
+                                    color: AppPalette.of(context).muted,
                                   ),
                                 ),
                               ],
@@ -619,16 +651,19 @@ class _RequestsScreenState extends State<RequestsScreen> {
                     children: [
                       ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(
+                        leading: Icon(
                           Icons.groups_outlined,
-                          color: lilac,
+                          color: AppPalette.of(context).accent,
                         ),
                         title: Text(invitation.groupName),
                         subtitle: Text(
                           tr('Invited as {role}', {
                             'role': tr(invitation.role.toLowerCase()),
                           }),
-                          style: const TextStyle(fontSize: 11, color: muted),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppPalette.of(context).muted,
+                          ),
                         ),
                       ),
                       Row(
@@ -738,7 +773,7 @@ class _ContactDetailsState extends State<ContactDetails> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, update) => AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppPalette.of(dialogContext).surface,
           title: const Text('Relation', style: TextStyle(fontSize: 17)),
           content: SelectField(
             '',
@@ -815,7 +850,10 @@ class _ContactDetailsState extends State<ContactDetails> {
                             contact.relation.isEmpty
                                 ? contact.email
                                 : contact.relation,
-                            style: const TextStyle(color: muted, fontSize: 12),
+                            style: TextStyle(
+                              color: AppPalette.of(context).muted,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -864,16 +902,22 @@ class _ContactDetailsState extends State<ContactDetails> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Phone Number or Whatsapp',
-                            style: TextStyle(fontSize: 10, color: muted),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppPalette.of(context).muted,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Text(contact.phone.isEmpty ? '—' : contact.phone),
                           const SizedBox(height: 18),
-                          const Text(
+                          Text(
                             'Profession',
-                            style: TextStyle(fontSize: 10, color: muted),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppPalette.of(context).muted,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Text(
@@ -888,16 +932,22 @@ class _ContactDetailsState extends State<ContactDetails> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Country',
-                            style: TextStyle(fontSize: 10, color: muted),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppPalette.of(context).muted,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Text(contact.country.isEmpty ? '—' : contact.country),
                           const SizedBox(height: 18),
-                          const Text(
+                          Text(
                             'City',
-                            style: TextStyle(fontSize: 10, color: muted),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppPalette.of(context).muted,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Text(contact.city.isEmpty ? '—' : contact.city),
@@ -923,11 +973,15 @@ class _ContactDetailsState extends State<ContactDetails> {
                       ['Ongoing', 'Upcoming', 'Past'][i],
                       style: TextStyle(
                         fontSize: 10,
-                        color: tab == i ? Colors.white : purple,
+                        color: tab == i
+                            ? Colors.white
+                            : AppPalette.of(context).accent,
                       ),
                     ),
                     selectedColor: purple,
-                    backgroundColor: const Color(0xfff0eaff),
+                    backgroundColor: AppPalette.of(
+                      context,
+                    ).wash(const Color(0xfff0eaff)),
                     side: BorderSide.none,
                     selected: tab == i,
                     onSelected: (_) => setState(() => tab = i),
@@ -1006,7 +1060,6 @@ class _GroupDetailsState extends State<GroupDetails> {
 
     final chosen = await showModalBottomSheet<Person>(
       context: context,
-      backgroundColor: Colors.white,
       builder: (sheetContext) => SafeArea(
         child: ListView(
           shrinkWrap: true,
@@ -1081,12 +1134,19 @@ class _GroupDetailsState extends State<GroupDetails> {
         children: [
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.groups_outlined, color: lilac, size: 36),
+            leading: Icon(
+              Icons.groups_outlined,
+              color: AppPalette.of(context).accent,
+              size: 36,
+            ),
             title: Text(group.name),
             subtitle: Text(
               '${trCount(group.members.length, '{count} member', '{count} members')}'
               '${owner ? ' · ${tr('you own this group')}' : ''}',
-              style: const TextStyle(fontSize: 11, color: muted),
+              style: TextStyle(
+                fontSize: 11,
+                color: AppPalette.of(context).muted,
+              ),
             ),
             trailing: loading
                 ? const SizedBox(
@@ -1132,7 +1192,10 @@ class _GroupDetailsState extends State<GroupDetails> {
               person: member.person,
               trailing: Text(
                 member.role.toLowerCase(),
-                style: const TextStyle(fontSize: 10, color: muted),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppPalette.of(context).muted,
+                ),
               ),
               onTap: () {
                 final contact = store.contacts.firstWhere(

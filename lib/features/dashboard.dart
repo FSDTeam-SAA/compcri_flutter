@@ -172,7 +172,11 @@ class _ChatTabState extends State<ChatTab> {
                     builder: (_) => const ConversationScreen(showHistory: true),
                   ),
                 ),
-                icon: const Icon(Icons.menu, size: 21, color: muted),
+                icon: Icon(
+                  Icons.menu,
+                  size: 21,
+                  color: AppPalette.of(context).muted,
+                ),
               ),
             ],
           ),
@@ -181,10 +185,13 @@ class _ChatTabState extends State<ChatTab> {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
             child: Surface(
-              color: const Color(0xffe2edff),
+              color: AppPalette.of(context).wash(const Color(0xffe2edff)),
               child: Row(
                 children: [
-                  const Icon(Icons.workspace_premium_outlined, color: purple),
+                  Icon(
+                    Icons.workspace_premium_outlined,
+                    color: AppPalette.of(context).accent,
+                  ),
                   const SizedBox(width: 10),
                   const Expanded(
                     child: Text(
@@ -247,9 +254,9 @@ class _ChatTabState extends State<ChatTab> {
                             const SizedBox(width: 8),
                             Text(
                               '${chats.length}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
-                                color: muted,
+                                color: AppPalette.of(context).muted,
                               ),
                             ),
                           ],
@@ -325,7 +332,7 @@ class _ChatRow extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: Material(
-      color: Colors.white.withValues(alpha: .84),
+      color: AppPalette.of(context).surface.withValues(alpha: .84),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -333,7 +340,7 @@ class _ChatRow extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xfff0eafa)),
+            border: Border.all(color: AppPalette.of(context).border),
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 14, 6, 14),
@@ -343,12 +350,12 @@ class _ChatRow extends StatelessWidget {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: const Color(0xfff3edff),
+                    color: AppPalette.of(context).wash(const Color(0xfff3edff)),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.chat_bubble_outline,
-                    color: purple,
+                    color: AppPalette.of(context).accent,
                     size: 19,
                   ),
                 ),
@@ -370,7 +377,10 @@ class _ChatRow extends StatelessWidget {
                       const SizedBox(height: 5),
                       Text(
                         relativeTime(conversation.updatedAt),
-                        style: const TextStyle(fontSize: 11.5, color: muted),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: AppPalette.of(context).muted,
+                        ),
                       ),
                     ],
                   ),
@@ -378,10 +388,10 @@ class _ChatRow extends StatelessWidget {
                 IconButton(
                   tooltip: tr('Delete chat'),
                   visualDensity: VisualDensity.compact,
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.delete_outline,
                     size: 19,
-                    color: Color(0xffff9a9a),
+                    color: Theme.of(context).colorScheme.error,
                   ),
                   onPressed: onDelete,
                 ),
@@ -402,7 +412,7 @@ class _PromptChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-    color: Colors.white.withValues(alpha: .8),
+    color: AppPalette.of(context).surface.withValues(alpha: .8),
     borderRadius: BorderRadius.circular(999),
     child: InkWell(
       borderRadius: BorderRadius.circular(999),
@@ -420,10 +430,10 @@ class _PromptChip extends StatelessWidget {
               const SizedBox(width: 7),
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xff4a3f66),
+                  color: AppPalette.of(context).ink,
                 ),
               ),
             ],
@@ -1025,7 +1035,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final assistant = StoreScope.read(context).assistantName;
     final chosen = await showModalBottomSheet<String?>(
       context: context,
-      backgroundColor: Colors.white,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -1052,11 +1061,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     ),
                   ),
                 ),
-                const Padding(
+                Padding(
                   padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: Text(
                     'Applies to the next spoken reply.',
-                    style: TextStyle(fontSize: 12, color: Color(0xff786b90)),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppPalette.of(context).muted,
+                    ),
                   ),
                 ),
                 const RadioListTile<String?>(
@@ -1175,7 +1187,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
         clipPlaying = false;
         clipsPending = false;
       });
-      _flashNotice('Audio playback is unavailable. You can read the reply below.');
+      _flashNotice(
+        'Audio playback is unavailable. You can read the reply below.',
+      );
       // No audio means no completion event, so drive the loop by hand.
       _afterReply();
     }
@@ -1215,7 +1229,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
   void _speechFailed(int playback) {
     if (!mounted || playback != replyTurn) return;
     setState(() => clipsPending = false);
-    _flashNotice('Audio playback is unavailable. You can read the reply below.');
+    _flashNotice(
+      'Audio playback is unavailable. You can read the reply below.',
+    );
     if (!clipPlaying && clipQueue.isEmpty) _afterReply();
   }
 
@@ -1237,7 +1253,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final placeholder = 'voice-${DateTime.now().microsecondsSinceEpoch}';
     final transcriptId = '$placeholder-transcript';
     final turn = ++voiceTurn;
-    // A muted turn asks the server not to synthesize anything at all.
+    // A AppPalette.of(context).muted turn asks the server not to synthesize anything at all.
     final speak = !mutedAudio;
     final clips = <Uint8List>[];
     var delivered = false;
@@ -1397,7 +1413,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppPalette.of(dialogContext).surface,
           title: const Text('Premium required'),
           content: const Text(
             'The AI assistant is included with Premium. Upgrade to plan your week by chat or voice.',
@@ -1482,7 +1498,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
           : at != null
           ? tr('Booked for {day} at {time}', {
               'day': conflictDay(at.startsAt),
-              'time': TimeOfDay.fromDateTime(at.startsAt).format(context),
+              'time': formatClockAt(at.startsAt),
             })
           : 'Applied to your calendar',
       onError: (error) async {
@@ -1616,8 +1632,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     quota!.exhausted
                         ? 'None left today'
                         : tr('{count} left today', {'count': quota!.remaining}),
-                    style: const TextStyle(
-                      color: Color(0xffa33f5c),
+                    style: TextStyle(
+                      color: AppPalette.of(
+                        context,
+                      ).foreground(const Color(0xffa33f5c)),
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1652,8 +1670,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
                               recording
                                   ? 'Listening… tap to send'
                                   : 'Click and Say',
-                              style: const TextStyle(
-                                color: lilac,
+                              style: TextStyle(
+                                color: AppPalette.of(context).accent,
                                 fontSize: 20,
                               ),
                             ),
@@ -1685,16 +1703,23 @@ class _ConversationScreenState extends State<ConversationScreen> {
               // A turn in flight is announced by the typing bubble in the
               // thread itself, so only the microphone still needs a line here.
               if (recording)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.only(bottom: 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.mic, size: 14, color: purple),
+                      Icon(
+                        Icons.mic,
+                        size: 14,
+                        color: AppPalette.of(context).accent,
+                      ),
                       SizedBox(width: 10),
                       Text(
                         'Listening… tap stop to send',
-                        style: TextStyle(fontSize: 12, color: muted),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppPalette.of(context).muted,
+                        ),
                       ),
                     ],
                   ),
@@ -1758,15 +1783,19 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           icon: Icon(
                             recording ? Icons.stop_circle : Icons.mic_none,
                             size: 21,
-                            color: recording ? purple : null,
+                            color: recording
+                                ? AppPalette.of(context).accent
+                                : null,
                           ),
                         ),
                         IconButton(
                           tooltip: tr('Send message'),
-                          onPressed: sending ? null : () => _sendTyped(input.text),
-                          icon: const Icon(
+                          onPressed: sending
+                              ? null
+                              : () => _sendTyped(input.text),
+                          icon: Icon(
                             Icons.arrow_upward,
-                            color: purple,
+                            color: AppPalette.of(context).accent,
                             size: 22,
                           ),
                         ),
@@ -1793,16 +1822,18 @@ class _ConversationScreenState extends State<ConversationScreen> {
             (action) => Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: Surface(
-                color: const Color(0xfffff4e0),
+                color: AppPalette.of(context).wash(const Color(0xfffff4e0)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.pending_actions,
                           size: 18,
-                          color: Color(0xffb87b00),
+                          color: AppPalette.of(
+                            context,
+                          ).foreground(const Color(0xffb87b00)),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -1817,7 +1848,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       const SizedBox(height: 10),
                       ConflictPanel(
                         report: action.conflictReport,
-                        background: Colors.white,
+                        background: AppPalette.of(context).surface,
                         suggestionsTitle: 'Tap a free time to book it instead',
                         onPick: (slot) =>
                             _resolveAction(action, true, at: slot),
@@ -1868,7 +1899,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
       // The stand-in voice bubble reads as provisional until the transcript
       // replaces it.
       fontStyle: message.pending ? FontStyle.italic : FontStyle.normal,
-      color: message.pending ? muted : const Color(0xff151518),
+      color: message.pending
+          ? AppPalette.of(context).muted
+          : AppPalette.of(context).ink,
     );
     return Align(
       alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -1887,9 +1920,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     : message.isUser
                     ? 'You said'
                     : StoreScope.of(context).assistantName,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
-                  color: Color(0xff7c3aed),
+                  color: AppPalette.of(context).accent,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -1915,8 +1948,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// the two sides apart at a glance even before the colour registers.
   BoxDecoration _bubbleSkin(bool assistant, bool isUser) => BoxDecoration(
     color: isUser
-        ? const Color(0xffede5fc)
-        : Colors.white.withValues(alpha: .92),
+        ? AppPalette.of(context).wash(const Color(0xffede5fc))
+        : AppPalette.of(context).surface.withValues(alpha: .92),
     border: Border.all(color: const Color(0xff7c3aed).withValues(alpha: .09)),
     borderRadius: BorderRadius.only(
       topLeft: const Radius.circular(20),
@@ -1942,7 +1975,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       String tooltip,
       IconData icon,
       VoidCallback? onPressed, {
-      Color color = muted,
+      Color? color,
     }) => IconButton(
       tooltip: tr(tooltip),
       onPressed: onPressed,
@@ -1952,7 +1985,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
       icon: Icon(
         icon,
         size: 14,
-        color: onPressed == null ? muted.withValues(alpha: .4) : color,
+        color: onPressed == null
+            ? AppPalette.of(context).muted.withValues(alpha: .4)
+            : (color ?? AppPalette.of(context).muted),
       ),
     );
 
@@ -1974,7 +2009,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
             'Delete message',
             Icons.delete_outline,
             sending ? null : () => _deleteMessage(message, index),
-            color: const Color(0xffff9a9a),
+            color: Theme.of(context).colorScheme.error,
           ),
       ],
     );
@@ -2018,7 +2053,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
               Flexible(
                 child: Text(
                   work,
-                  style: const TextStyle(fontSize: 11, color: muted),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppPalette.of(context).muted,
+                  ),
                 ),
               ),
             ],
@@ -2040,10 +2078,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
       decoration: _bubbleSkin(true, false),
       child: MarkdownText(
         '${StreamedMarkdown.repair(streamingText)}▍',
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
           height: 1.45,
-          color: Color(0xff151518),
+          color: AppPalette.of(context).ink,
         ),
       ),
     ),
@@ -2060,7 +2098,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final edited = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.of(dialogContext).surface,
         title: const Text('Edit message'),
         content: TextField(controller: controller, maxLines: 4),
         actions: [
@@ -2141,14 +2179,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// Keeps a conversation past the retention window, or lets it age out again.
   Future<void> _toggleSaved(ConversationSummary item) async {
     final store = StoreScope.read(context);
-    await runAction(
-      context,
-      () async {
-        await store.api.ai.setConversationSaved(item.id, !item.saved);
-        await store.loadConversations();
-      },
-      success: item.saved ? 'Chat will age out again' : 'Chat kept',
-    );
+    await runAction(context, () async {
+      await store.api.ai.setConversationSaved(item.id, !item.saved);
+      await store.loadConversations();
+    }, success: item.saved ? 'Chat will age out again' : 'Chat kept');
   }
 
   Widget _historyDrawer(AppStore store) {
@@ -2157,7 +2191,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         .where((item) => item.title.toLowerCase().contains(needle))
         .toList();
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: AppPalette.of(context).surface,
       child: SafeArea(
         child: Column(
           children: [
@@ -2196,7 +2230,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 onChanged: (value) => setState(() => historyQuery = value),
                 decoration: InputDecoration(
                   hintText: tr('Search chat history'),
-                  prefixIcon: const Icon(Icons.search, size: 20, color: muted),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    size: 20,
+                    color: AppPalette.of(context).muted,
+                  ),
                 ),
               ),
             ),
@@ -2230,7 +2268,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                       ? Icons.bookmark
                                       : Icons.bookmark_border,
                                   size: 20,
-                                  color: item.saved ? purple : muted,
+                                  color: item.saved
+                                      ? AppPalette.of(context).accent
+                                      : AppPalette.of(context).muted,
                                 ),
                               ),
                               onTap: () {

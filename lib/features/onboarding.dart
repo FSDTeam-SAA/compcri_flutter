@@ -98,7 +98,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xfff7f5ff),
+    backgroundColor: AppPalette.of(context).wash(const Color(0xfff7f5ff)),
     body: SafeArea(
       child: Column(
         children: [
@@ -109,9 +109,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 const Spacer(),
                 TextButton(
                   onPressed: finishing ? null : finish,
-                  child: const Text(
+                  child: Text(
                     'Skip',
-                    style: TextStyle(color: Color(0xff796b90), fontSize: 13),
+                    style: TextStyle(
+                      color: AppPalette.of(context).muted,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ],
@@ -141,14 +144,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           AnimatedBuilder(
                             animation: Listenable.merge([pages, float]),
                             child: RepaintBoundary(
-                              child: Image.asset(
-                                'assets/artwork/onboarding_${slide.asset}.png',
-                                width: artSize,
-                                height: artSize,
-                                fit: BoxFit.contain,
-                                cacheWidth: 1000,
-                                filterQuality: FilterQuality.high,
-                                excludeFromSemantics: true,
+                              child: ThemedArtwork(
+                                child: Image.asset(
+                                  'assets/artwork/onboarding_${slide.asset}.png',
+                                  width: artSize,
+                                  height: artSize,
+                                  fit: BoxFit.contain,
+                                  cacheWidth: 1000,
+                                  filterQuality: FilterQuality.high,
+                                  excludeFromSemantics: true,
+                                ),
                               ),
                             ),
                             builder: (context, child) {
@@ -185,8 +190,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                 Text(
                                   slide.label,
                                   textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    color: violet,
+                                  style: TextStyle(
+                                    color: AppPalette.of(context).accent,
                                     fontSize: 10,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: 1.6,
@@ -196,22 +201,22 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                 Text(
                                   slide.title,
                                   textAlign: TextAlign.center,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 31,
                                     height: 1.13,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: -1.1,
-                                    color: Color(0xff251c39),
+                                    color: AppPalette.of(context).ink,
                                   ),
                                 ),
                                 const SizedBox(height: 15),
                                 Text(
                                   slide.body,
                                   textAlign: TextAlign.center,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 13,
                                     height: 1.7,
-                                    color: Color(0xff796b90),
+                                    color: AppPalette.of(context).muted,
                                   ),
                                 ),
                                 const SizedBox(height: 20),
@@ -221,7 +226,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                     vertical: 10,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: .85),
+                                    color: AppPalette.of(
+                                      context,
+                                    ).surface.withValues(alpha: .85),
                                     borderRadius: BorderRadius.circular(30),
                                     border: Border.all(
                                       color: violet.withValues(alpha: .08),
@@ -230,13 +237,17 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(slide.icon, size: 16, color: violet),
+                                      Icon(
+                                        slide.icon,
+                                        size: 16,
+                                        color: AppPalette.of(context).accent,
+                                      ),
                                       const SizedBox(width: 8),
                                       Flexible(
                                         child: Text(
                                           slide.chip,
-                                          style: const TextStyle(
-                                            color: Color(0xff62537c),
+                                          style: TextStyle(
+                                            color: AppPalette.of(context).ink,
                                             fontSize: 11,
                                             fontWeight: FontWeight.w600,
                                           ),
@@ -289,7 +300,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             decoration: BoxDecoration(
                               color: page == i
                                   ? violet
-                                  : const Color(0xffddd4ef),
+                                  : AppPalette.of(context).border,
                               borderRadius: BorderRadius.circular(9),
                             ),
                           ),
@@ -305,6 +316,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   child: FilledButton(
                     style: FilledButton.styleFrom(
                       backgroundColor: violet,
+                      foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18),
                       ),

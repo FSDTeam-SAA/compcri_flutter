@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart' hide Text;
 import 'i18n.dart';
+import 'theme.dart';
+export 'theme.dart';
 
 import 'api_client.dart';
 
@@ -10,54 +12,10 @@ const purple = Color(0xff7040ff),
 const violetGradient = LinearGradient(
   begin: Alignment.topCenter,
   end: Alignment.bottomCenter,
-  colors: [Color(0xff6740ff), Color(0xff974bfa)],
+  colors: [Color(0xff6740ff), Color(0xff8b3ae8)],
 );
-final appTheme = ThemeData(
-  useMaterial3: true,
-  colorScheme: ColorScheme.fromSeed(
-    seedColor: purple,
-    primary: purple,
-    surface: Colors.white,
-  ),
-  scaffoldBackgroundColor: Colors.transparent,
-  fontFamily: 'Inter',
-  textTheme: const TextTheme(
-    bodyMedium: TextStyle(fontSize: 14, color: Color(0xff151518)),
-    bodyLarge: TextStyle(fontSize: 16, color: Color(0xff151518)),
-  ),
-  appBarTheme: const AppBarTheme(
-    backgroundColor: Colors.transparent,
-    surfaceTintColor: Colors.transparent,
-    elevation: 0,
-    centerTitle: true,
-    titleTextStyle: TextStyle(
-      fontFamily: 'Inter',
-      fontSize: 16,
-      color: Color(0xff151518),
-      fontWeight: FontWeight.w500,
-    ),
-    iconTheme: IconThemeData(color: muted, size: 22),
-  ),
-  inputDecorationTheme: InputDecorationTheme(
-    filled: true,
-    fillColor: Colors.white.withValues(alpha: .85),
-    hintStyle: const TextStyle(color: Color(0xffb9b8bd), fontSize: 12),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(9),
-      borderSide: const BorderSide(color: lilac, width: .8),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(9),
-      borderSide: const BorderSide(color: lilac, width: .8),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(9),
-      borderSide: const BorderSide(color: purple, width: 1.3),
-    ),
-  ),
-  dividerTheme: const DividerThemeData(color: Color(0xffeeeaf7), thickness: 1),
-);
+final appTheme = buildAppTheme(Brightness.light);
+final darkAppTheme = buildAppTheme(Brightness.dark);
 
 /// Pushes [route]. Awaiting the result lets a caller refresh once the pushed
 /// screen pops.
@@ -80,8 +38,17 @@ class Backdrop extends StatelessWidget {
       gradient: LinearGradient(
         begin: Alignment.topRight,
         end: Alignment.bottomLeft,
-        stops: auth ? [0, .32, .65] : [0, .42, .72, 1],
-        colors: auth
+        stops: auth && !AppPalette.of(context).dark
+            ? [0, .32, .65]
+            : [0, .42, .72, 1],
+        colors: AppPalette.of(context).dark
+            ? [
+                const Color(0xff191a25),
+                const Color(0xff14151d),
+                const Color(0xff1b1828),
+                const Color(0xff15161e),
+              ]
+            : auth
             ? [const Color(0xffe1d3ff), const Color(0xfff3fdff), Colors.white]
             : [
                 const Color(0xffddfaff),
@@ -101,7 +68,9 @@ class Backdrop extends StatelessWidget {
                   'assets/artwork/pastel_shapes.png',
                   fit: BoxFit.cover,
                   alignment: Alignment.center,
-                  opacity: AlwaysStoppedAnimation(auth ? .16 : .10),
+                  opacity: AlwaysStoppedAnimation(
+                    AppPalette.of(context).dark ? .025 : (auth ? .16 : .10),
+                  ),
                   filterQuality: FilterQuality.medium,
                 ),
               ),
@@ -270,7 +239,7 @@ class PrimaryButton extends StatelessWidget {
       height: 48,
       decoration: BoxDecoration(
         gradient: outline || danger ? null : violetGradient,
-        color: danger && !outline ? const Color(0xffff4e2c) : null,
+        color: danger && !outline ? const Color(0xffb3261e) : null,
         borderRadius: BorderRadius.circular(10),
         border: outline
             ? Border.all(color: danger ? const Color(0xffff8e8e) : lilac)
@@ -280,7 +249,9 @@ class PrimaryButton extends StatelessWidget {
         onPressed: onPressed,
         style: TextButton.styleFrom(
           foregroundColor: outline
-              ? (danger ? const Color(0xffff4e2c) : purple)
+              ? (danger
+                    ? Theme.of(context).colorScheme.error
+                    : AppPalette.of(context).accent)
               : Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
@@ -400,13 +371,17 @@ class _AppFieldState extends State<AppField> {
                       hidden
                           ? Icons.visibility_off_outlined
                           : Icons.visibility_outlined,
-                      color: lilac,
+                      color: AppPalette.of(context).accent,
                       size: 22,
                     ),
                   )
                 : widget.icon == null
                 ? null
-                : Icon(widget.icon, color: lilac, size: 21),
+                : Icon(
+                    widget.icon,
+                    color: AppPalette.of(context).accent,
+                    size: 21,
+                  ),
           ),
         ),
       ],
@@ -439,7 +414,10 @@ class SelectField extends StatelessWidget {
           decoration: const InputDecoration(
             contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           ),
-          style: const TextStyle(fontSize: 12, color: muted),
+          style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+            fontSize: 12,
+            color: AppPalette.of(context).ink,
+          ),
           items: values
               .map((v) => DropdownMenuItem(value: v, child: Text(v)))
               .toList(),
@@ -534,6 +512,30 @@ class FeatheredArt extends StatelessWidget {
   );
 }
 
+/// Softens the light-backed onboarding artwork for comfortable night viewing.
+class ThemedArtwork extends StatelessWidget {
+  const ThemedArtwork({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    if (!AppPalette.of(context).dark) return child;
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (bounds) => const RadialGradient(
+        colors: [Colors.white, Colors.white, Colors.transparent],
+        stops: [0, .5, 1],
+      ).createShader(bounds),
+      child: ColorFiltered(
+        colorFilter: const ColorFilter.mode(
+          Color(0xff79688c),
+          BlendMode.modulate,
+        ),
+        child: child,
+      ),
+    );
+  }
+}
+
 class Brand extends StatelessWidget {
   const Brand({super.key, this.size = 72, this.wordmark = false});
   final double size;
@@ -557,7 +559,10 @@ class Brand extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
-        const Text('DAY', style: TextStyle(fontSize: 25, color: purple)),
+        Text(
+          'DAY',
+          style: TextStyle(fontSize: 25, color: AppPalette.of(context).accent),
+        ),
       ],
     ],
   );
@@ -852,8 +857,9 @@ class Avatar extends StatelessWidget {
   /// and identical wherever the same person is shown.
   Widget _placeholder() {
     final letters = _initials(name);
-    final tint = _tints[(letters.isEmpty ? index : letters.codeUnitAt(0)) %
-        _tints.length];
+    final tint =
+        _tints[(letters.isEmpty ? index : letters.codeUnitAt(0)) %
+            _tints.length];
     return Container(
       width: size,
       height: size,
@@ -874,11 +880,11 @@ class Avatar extends StatelessWidget {
 
   static const _tints = [
     Color(0xff7c5cd6),
-    Color(0xff4f7fd4),
-    Color(0xff3fa89a),
-    Color(0xffd08a3e),
-    Color(0xffc2607f),
-    Color(0xff6b73c4),
+    Color(0xff3867b6),
+    Color(0xff287b70),
+    Color(0xff966121),
+    Color(0xffa34665),
+    Color(0xff5961b2),
   ];
 
   /// Up to two initials from the first and last word of [value].
@@ -900,18 +906,18 @@ class Surface extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(14),
-    this.color = Colors.white,
+    this.color,
   });
   final Widget child;
   final EdgeInsets padding;
-  final Color color;
+  final Color? color;
   @override
   Widget build(BuildContext context) => Container(
     padding: padding,
     decoration: BoxDecoration(
-      color: color.withValues(alpha: .84),
+      color: (color ?? AppPalette.of(context).surface).withValues(alpha: .84),
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: const Color(0xfff0eafa)),
+      border: Border.all(color: AppPalette.of(context).border),
     ),
     // A tile inside the card paints its ink on the nearest Material, which
     // would otherwise be behind this decoration and invisible.
@@ -923,7 +929,7 @@ class Surface extends StatelessWidget {
 void toastError(BuildContext context, String text) =>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(text),
+        content: Text(text, style: const TextStyle(color: Colors.white)),
         behavior: SnackBarBehavior.floating,
         backgroundColor: const Color(0xffb3261e),
       ),
@@ -1015,7 +1021,10 @@ Future<T?> _run<T extends Object>(
     } else {
       messenger.showSnackBar(
         SnackBar(
-          content: Text(error.message),
+          content: Text(
+            error.message,
+            style: const TextStyle(color: Colors.white),
+          ),
           behavior: SnackBarBehavior.floating,
           backgroundColor: const Color(0xffb3261e),
         ),
@@ -1026,7 +1035,10 @@ Future<T?> _run<T extends Object>(
     dismiss();
     messenger.showSnackBar(
       SnackBar(
-        content: Text(tr('Something went wrong: {error}', {'error': error})),
+        content: Text(
+          tr('Something went wrong: {error}', {'error': error}),
+          style: const TextStyle(color: Colors.white),
+        ),
         behavior: SnackBarBehavior.floating,
         backgroundColor: const Color(0xffb3261e),
       ),
@@ -1056,7 +1068,11 @@ class EmptyState extends StatelessWidget {
         Text(
           message,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: muted, fontSize: 13, height: 1.4),
+          style: TextStyle(
+            color: AppPalette.of(context).muted,
+            fontSize: 13,
+            height: 1.4,
+          ),
         ),
         if (action != null) ...[const SizedBox(height: 16), action!],
       ],
@@ -1085,8 +1101,8 @@ class LoadingBlock extends StatelessWidget {
 /// will land, so the wait reads as an answer being written rather than as a
 /// screen that has stopped responding.
 class TypingDots extends StatefulWidget {
-  const TypingDots({super.key, this.color = purple, this.size = 7});
-  final Color color;
+  const TypingDots({super.key, this.color, this.size = 7});
+  final Color? color;
   final double size;
   @override
   State<TypingDots> createState() => _TypingDotsState();
@@ -1137,7 +1153,8 @@ class _TypingDotsState extends State<TypingDots>
                 width: widget.size,
                 height: widget.size,
                 decoration: BoxDecoration(
-                  color: widget.color.withValues(alpha: .3 + .6 * _lift(i)),
+                  color: (widget.color ?? AppPalette.of(context).accent)
+                      .withValues(alpha: .3 + .6 * _lift(i)),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -1206,7 +1223,7 @@ Future<bool> confirm(
     await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.of(context).surface,
         title: Text(title),
         content: Text(message),
         actions: [
@@ -1218,7 +1235,11 @@ Future<bool> confirm(
             onPressed: () => Navigator.pop(context, true),
             child: Text(
               action,
-              style: TextStyle(color: danger ? Colors.red : purple),
+              style: TextStyle(
+                color: danger
+                    ? Theme.of(context).colorScheme.error
+                    : AppPalette.of(context).accent,
+              ),
             ),
           ),
         ],

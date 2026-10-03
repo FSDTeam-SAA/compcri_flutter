@@ -21,10 +21,22 @@ List<String> _strings(dynamic value) =>
 /// A Cloudinary-backed image. The API populates `avatarMediaId` and
 /// `posterMediaId` when it can, and leaves a bare id when it cannot.
 class MediaAsset {
-  const MediaAsset({required this.id, required this.secureUrl});
+  const MediaAsset({
+    required this.id,
+    required this.secureUrl,
+    this.width,
+    this.height,
+  });
 
   final String id;
   final String secureUrl;
+
+  /// Pixel size, when the API knows it.
+  final int? width, height;
+
+  /// Width / height, or null when the size is unknown.
+  double? get aspectRatio =>
+      width != null && height != null && height! > 0 ? width! / height! : null;
 
   static MediaAsset? parse(dynamic value) {
     if (value == null) return null;
@@ -32,6 +44,8 @@ class MediaAsset {
       return MediaAsset(
         id: _string(value['_id']),
         secureUrl: _string(value['secureUrl']),
+        width: (value['width'] as num?)?.toInt(),
+        height: (value['height'] as num?)?.toInt(),
       );
     }
     return null;
@@ -110,6 +124,8 @@ class AppUser {
     this.country = '',
     this.city = '',
     this.locale = 'en',
+    this.timeFormat = 'AUTO',
+    this.deviceUses24Hour,
     this.interests = const <String>[],
     this.aiPersonalizationConsent = false,
     this.assistantName = '',
@@ -132,6 +148,13 @@ class AppUser {
       status;
   final List<String> interests;
   final bool aiPersonalizationConsent;
+
+  /// AUTO, H12 or H24 — see [ClockFormat].
+  final String timeFormat;
+
+  /// The phone setting the app last reported, which AUTO resolves against
+  /// when the server writes times (reminders, the assistant).
+  final bool? deviceUses24Hour;
 
   /// What this user calls the assistant. Empty means they never chose one, so
   /// the app's own default stands in rather than a name frozen at signup.
@@ -167,6 +190,8 @@ class AppUser {
     country: _string(json['country']),
     city: _string(json['city']),
     locale: _string(json['locale'], 'en'),
+    timeFormat: _string(json['timeFormat'], 'AUTO'),
+    deviceUses24Hour: json['deviceUses24Hour'] as bool?,
     interests: _strings(json['interests']),
     assistantName: _string(json['assistantName'], ''),
     aiPersonalizationConsent:
@@ -416,7 +441,13 @@ class CalendarEvent {
 
   // --- label mapping -----------------------------------------------------
 
-  static const reminderOptions = ['None', '10 Minutes', '30 Minutes', '1 Hour'];
+  static const reminderOptions = [
+    'None',
+    '5 Minutes',
+    '10 Minutes',
+    '30 Minutes',
+    '1 Hour',
+  ];
   static const repeatOptions = ['Never', 'Daily', 'Weekly', 'Monthly'];
 
   static String reminderLabel(List<int> minutes) {
@@ -435,6 +466,8 @@ class CalendarEvent {
 
   static List<int> minutesForLabel(String label) {
     switch (label) {
+      case '5 Minutes':
+        return [5];
       case '10 Minutes':
         return [10];
       case '30 Minutes':
@@ -442,7 +475,8 @@ class CalendarEvent {
       case '1 Hour':
         return [60];
       default:
-        return const <int>[];
+        final match = RegExp(r'^(\d+) Minutes$').firstMatch(label);
+        return match == null ? const <int>[] : [int.parse(match.group(1)!)];
     }
   }
 

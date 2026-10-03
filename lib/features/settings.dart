@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart' hide Text;
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:purchases_flutter/purchases_flutter.dart' show Package;
 import 'package:url_launcher/url_launcher.dart';
@@ -6,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/api_client.dart';
 import '../core/design.dart';
 import '../core/purchases.dart';
+import '../core/push.dart';
 import '../core/store.dart';
 import '../core/time.dart';
 import 'events.dart';
@@ -37,6 +41,12 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 settingsRow(
                   context,
+                  Icons.brightness_6_outlined,
+                  'Appearance',
+                  '/appearance',
+                ),
+                settingsRow(
+                  context,
                   Icons.lock_outline,
                   'Change Password',
                   '/password',
@@ -62,6 +72,10 @@ class SettingsScreen extends StatelessWidget {
         return const NotificationSettingsScreen();
       case '/language':
         return const LanguageScreen();
+      case '/appearance':
+        return const AppearanceScreen();
+      case '/time-format':
+        return const TimeFormatScreen();
       case '/assistants':
         return const AssistantsScreen();
       case '/assistant/add':
@@ -102,16 +116,24 @@ Widget settingsRow(
   leading: Icon(
     icon,
     size: 21,
-    color: danger ? const Color(0xffff684a) : muted,
+    color: danger
+        ? AppPalette.of(context).foreground(const Color(0xffff684a))
+        : AppPalette.of(context).muted,
   ),
   title: Text(
     title,
     style: TextStyle(
       fontSize: 13,
-      color: danger ? const Color(0xffff684a) : null,
+      color: danger
+          ? AppPalette.of(context).foreground(const Color(0xffff684a))
+          : null,
     ),
   ),
-  trailing: const Icon(Icons.chevron_right, size: 21, color: muted),
+  trailing: Icon(
+    Icons.chevron_right,
+    size: 21,
+    color: AppPalette.of(context).muted,
+  ),
   onTap: () => go(context, route),
 );
 
@@ -138,9 +160,15 @@ class ProfileScreen extends StatelessWidget {
               title: Text(user?.name ?? 'Your profile'),
               subtitle: Text(
                 user?.email ?? '',
-                style: const TextStyle(fontSize: 11, color: muted),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppPalette.of(context).muted,
+                ),
               ),
-              trailing: const Icon(Icons.chevron_right, color: muted),
+              trailing: Icon(
+                Icons.chevron_right,
+                color: AppPalette.of(context).muted,
+              ),
               onTap: () => go(context, '/profile/view'),
             ),
           ),
@@ -188,7 +216,9 @@ class ProfileScreen extends StatelessWidget {
                 TextButton(
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.white,
-                    backgroundColor: Colors.white.withValues(alpha: .2),
+                    backgroundColor: AppPalette.of(
+                      context,
+                    ).surface.withValues(alpha: .2),
                   ),
                   onPressed: () => go(context, '/subscription'),
                   child: Text(
@@ -235,6 +265,18 @@ class ProfileScreen extends StatelessWidget {
                   '/notification-settings',
                 ),
                 settingsRow(context, Icons.language, 'Language', '/language'),
+                settingsRow(
+                  context,
+                  Icons.brightness_6_outlined,
+                  'Appearance',
+                  '/appearance',
+                ),
+                settingsRow(
+                  context,
+                  Icons.schedule,
+                  'Time format',
+                  '/time-format',
+                ),
                 settingsRow(
                   context,
                   Icons.person_outline,
@@ -424,10 +466,14 @@ class _ProfileFormState extends State<ProfileForm> {
                     bottom: 0,
                     child: InkWell(
                       onTap: _changeAvatar,
-                      child: const CircleAvatar(
+                      child: CircleAvatar(
                         radius: 13,
-                        backgroundColor: Colors.white,
-                        child: Icon(Icons.add, size: 20, color: muted),
+                        backgroundColor: AppPalette.of(context).surface,
+                        child: Icon(
+                          Icons.add,
+                          size: 20,
+                          color: AppPalette.of(context).muted,
+                        ),
                       ),
                     ),
                   ),
@@ -491,13 +537,15 @@ class _ProfileFormState extends State<ProfileForm> {
                           fontSize: 10,
                           color: interests.contains(value)
                               ? Colors.white
-                              : muted,
+                              : AppPalette.of(context).muted,
                         ),
                       ),
                       selected: interests.contains(value),
                       showCheckmark: false,
-                      selectedColor: const Color(0xffa294ef),
-                      backgroundColor: const Color(0xfffff6f8),
+                      selectedColor: purple,
+                      backgroundColor: AppPalette.of(
+                        context,
+                      ).wash(const Color(0xfffff6f8)),
                       side: BorderSide.none,
                       visualDensity: VisualDensity.compact,
                       onSelected: (selected) => setState(
@@ -553,7 +601,7 @@ class ProfileSummary extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
             decoration: BoxDecoration(
-              color: const Color(0xffe9e7ff),
+              color: AppPalette.of(context).wash(const Color(0xffe9e7ff)),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -611,7 +659,9 @@ class ProfileSummary extends StatelessWidget {
                       vertical: 16,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xffe9e7ff),
+                      color: AppPalette.of(
+                        context,
+                      ).wash(const Color(0xffe9e7ff)),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(interest, style: const TextStyle(fontSize: 13)),
@@ -663,11 +713,14 @@ class _PasswordScreenState extends State<PasswordScreen> {
       key: form,
       child: Column(
         children: [
-          const Surface(
-            color: Color(0xffe2edff),
+          Surface(
+            color: AppPalette.of(context).wash(const Color(0xffe2edff)),
             child: Text(
               'Changing your password signs you out of every device.',
-              style: TextStyle(fontSize: 12, color: muted),
+              style: TextStyle(
+                fontSize: 12,
+                color: AppPalette.of(context).muted,
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -755,7 +808,7 @@ class _DeleteScreenState extends State<DeleteScreen> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.of(dialogContext).surface,
         title: const Text('Account scheduled for deletion'),
         content: Text(
           purgeAt == null
@@ -790,9 +843,9 @@ class _DeleteScreenState extends State<DeleteScreen> {
           style: TextStyle(fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 12),
-        const Text(
+        Text(
           'Deleting your account removes your profile, settings, events, and network. Your account stays recoverable for a grace period; after that the data is permanently deleted. Store subscriptions must be cancelled separately in the App Store or Play Store.',
-          style: TextStyle(color: muted, height: 1.4),
+          style: TextStyle(color: AppPalette.of(context).muted, height: 1.4),
         ),
         const SizedBox(height: 26),
         const Text('Why are you leaving?'),
@@ -804,12 +857,17 @@ class _DeleteScreenState extends State<DeleteScreen> {
             dense: true,
             leading: Icon(
               reason == i ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: reason == i ? purple : muted,
+              color: reason == i
+                  ? AppPalette.of(context).accent
+                  : AppPalette.of(context).muted,
               size: 21,
             ),
             title: Text(
               _reasons[i],
-              style: const TextStyle(color: muted, fontSize: 13),
+              style: TextStyle(
+                color: AppPalette.of(context).muted,
+                fontSize: 13,
+              ),
             ),
             onTap: () => setState(() => reason = i),
           ),
@@ -910,10 +968,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: muted,
+                color: AppPalette.of(context).muted,
                 letterSpacing: .4,
               ),
             ),
@@ -1014,19 +1072,19 @@ class _NotificationCard extends StatelessWidget {
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.only(right: 20),
           decoration: BoxDecoration(
-            color: const Color(0xffffeceb),
+            color: AppPalette.of(context).wash(const Color(0xffffeceb)),
             borderRadius: BorderRadius.circular(16),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.delete_outline,
-            color: Color(0xffdc2626),
+            color: AppPalette.of(context).foreground(const Color(0xffdc2626)),
             size: 21,
           ),
         ),
         child: Material(
           color: item.read
-              ? Colors.white.withValues(alpha: .84)
-              : const Color(0xfff7f4ff),
+              ? AppPalette.of(context).surface.withValues(alpha: .84)
+              : AppPalette.of(context).wash(const Color(0xfff7f4ff)),
           borderRadius: BorderRadius.circular(16),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
@@ -1036,7 +1094,7 @@ class _NotificationCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: item.read
-                      ? const Color(0xfff0eafa)
+                      ? AppPalette.of(context).border
                       : purple.withValues(alpha: .28),
                 ),
               ),
@@ -1049,10 +1107,14 @@ class _NotificationCard extends StatelessWidget {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: tint.$1,
+                        color: AppPalette.of(context).wash(tint.$1),
                         borderRadius: BorderRadius.circular(13),
                       ),
-                      child: Icon(item.icon, color: tint.$2, size: 20),
+                      child: Icon(
+                        item.icon,
+                        color: AppPalette.of(context).foreground(tint.$2),
+                        size: 20,
+                      ),
                     ),
                     const SizedBox(width: 13),
                     Expanded(
@@ -1082,8 +1144,8 @@ class _NotificationCard extends StatelessWidget {
                                   ),
                                   width: 8,
                                   height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: purple,
+                                  decoration: BoxDecoration(
+                                    color: AppPalette.of(context).accent,
                                     shape: BoxShape.circle,
                                   ),
                                 ),
@@ -1092,16 +1154,19 @@ class _NotificationCard extends StatelessWidget {
                           const SizedBox(height: 5),
                           Text(
                             item.body,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12.5,
                               height: 1.45,
-                              color: Color(0xff4a4360),
+                              color: AppPalette.of(context).muted,
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             relativeTime(item.createdAt),
-                            style: const TextStyle(fontSize: 11, color: muted),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppPalette.of(context).muted,
+                            ),
                           ),
                         ],
                       ),
@@ -1132,7 +1197,9 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-    color: selected ? purple : Colors.white.withValues(alpha: .8),
+    color: selected
+        ? purple
+        : AppPalette.of(context).surface.withValues(alpha: .8),
     borderRadius: BorderRadius.circular(999),
     child: InkWell(
       borderRadius: BorderRadius.circular(999),
@@ -1141,7 +1208,7 @@ class _FilterChip extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: selected ? purple : const Color(0xfff0eafa),
+            color: selected ? purple : AppPalette.of(context).border,
           ),
         ),
         child: Padding(
@@ -1154,7 +1221,7 @@ class _FilterChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : muted,
+                  color: selected ? Colors.white : AppPalette.of(context).muted,
                 ),
               ),
               if (count != null && count! > 0) ...[
@@ -1166,8 +1233,8 @@ class _FilterChip extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: selected
-                        ? Colors.white.withValues(alpha: .25)
-                        : const Color(0xffede9fe),
+                        ? AppPalette.of(context).surface.withValues(alpha: .25)
+                        : AppPalette.of(context).wash(const Color(0xffede9fe)),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -1175,7 +1242,9 @@ class _FilterChip extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
-                      color: selected ? Colors.white : purple,
+                      color: selected
+                          ? Colors.white
+                          : AppPalette.of(context).accent,
                     ),
                   ),
                 ),
@@ -1188,8 +1257,24 @@ class _FilterChip extends StatelessWidget {
   );
 }
 
-class NotificationSettingsScreen extends StatelessWidget {
+class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
+
+  @override
+  State<NotificationSettingsScreen> createState() =>
+      _NotificationSettingsScreenState();
+}
+
+class _NotificationSettingsScreenState
+    extends State<NotificationSettingsScreen> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    PushMessaging.instance.start(
+      StoreScope.of(context),
+      requestPermission: false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1198,27 +1283,82 @@ class NotificationSettingsScreen extends StatelessWidget {
         store.user?.notificationPreferences ?? const NotificationPreferences();
     return PageFrame(
       title: 'Notification',
-      child: Surface(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Column(
-          children: preferences.asLabels.entries
-              .map(
-                (entry) => SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  title: Text(entry.key, style: const TextStyle(fontSize: 13)),
-                  value: entry.value,
-                  activeThumbColor: Colors.white,
-                  activeTrackColor: purple,
-                  onChanged: (value) => runAction(
-                    context,
-                    () => store.setNotificationPreference(entry.key, value),
-                    showSpinner: false,
-                  ),
+      child: Column(
+        children: [
+          ListenableBuilder(
+            listenable: PushMessaging.instance,
+            builder: (context, _) {
+              final status = PushMessaging.instance.status;
+              final message = switch (status) {
+                PushStatus.denied =>
+                  'Notifications are disabled in device settings.',
+                PushStatus.notRequested =>
+                  'Allow notifications to receive event reminders.',
+                PushStatus.unavailable =>
+                  'Device notifications are unavailable. Reminders appear in your inbox.',
+                PushStatus.retrying =>
+                  'Connecting notifications. We will retry automatically.',
+                PushStatus.checking => 'Checking notification permission…',
+                PushStatus.ready => 'Device notifications are enabled.',
+              };
+              return Surface(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(message, style: const TextStyle(fontSize: 13)),
+                    if (!preferences.pushEnabled || !preferences.reminders)
+                      const Text(
+                        'Event reminders are turned off.',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    if (status == PushStatus.denied)
+                      TextButton(
+                        onPressed: () => runAction(
+                          context,
+                          PushMessaging.instance.openSettings,
+                        ),
+                        child: const Text('Open device settings'),
+                      ),
+                    if (status == PushStatus.notRequested)
+                      TextButton(
+                        onPressed: () => runAction(
+                          context,
+                          () => PushMessaging.instance.start(store),
+                        ),
+                        child: const Text('Allow notifications'),
+                      ),
+                  ],
                 ),
-              )
-              .toList(),
-        ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          Surface(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Column(
+              children: preferences.asLabels.entries
+                  .map(
+                    (entry) => SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(
+                        entry.key,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      value: entry.value,
+                      activeThumbColor: Colors.white,
+                      activeTrackColor: purple,
+                      onChanged: (value) => runAction(
+                        context,
+                        () => store.setNotificationPreference(entry.key, value),
+                        showSpinner: false,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1242,7 +1382,11 @@ class LanguageScreen extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   title: Text(label, style: const TextStyle(fontSize: 13)),
                   trailing: current == label
-                      ? const Icon(Icons.check, color: purple, size: 18)
+                      ? Icon(
+                          Icons.check,
+                          color: AppPalette.of(context).accent,
+                          size: 18,
+                        )
                       : null,
                   onTap: () => runAction(
                     context,
@@ -1253,6 +1397,60 @@ class LanguageScreen extends StatelessWidget {
                 ),
               )
               .toList(),
+        ),
+      ),
+    );
+  }
+}
+
+/// Automatic, 12-hour or 24-hour, each shown with an example in that format
+/// so the choice is obvious without knowing the terms.
+class TimeFormatScreen extends StatelessWidget {
+  const TimeFormatScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final store = StoreScope.of(context);
+    const sample = TimeOfDay(hour: 15, minute: 0);
+    String example(TimeFormat format) => switch (format) {
+      TimeFormat.auto => tr('Follows your phone · {time}', {
+        'time': formatClock(sample, use24: ClockFormat.deviceUses24Hour),
+      }),
+      TimeFormat.h12 => formatClock(sample, use24: false),
+      TimeFormat.h24 => formatClock(sample, use24: true),
+    };
+    return PageFrame(
+      title: 'Time format',
+      child: Surface(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Column(
+          children: [
+            for (final format in TimeFormat.values)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(format.label, style: const TextStyle(fontSize: 13)),
+                subtitle: Text(
+                  example(format),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppPalette.of(context).muted,
+                  ),
+                ),
+                trailing: ClockFormat.preference == format
+                    ? Icon(
+                        Icons.check,
+                        color: AppPalette.of(context).accent,
+                        size: 18,
+                      )
+                    : null,
+                onTap: () => runAction(
+                  context,
+                  () => store.setTimeFormat(format),
+                  success: 'Time format updated',
+                  showSpinner: false,
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -1311,7 +1509,10 @@ class _AssistantsScreenState extends State<AssistantsScreen> {
           ...store.delegations.map(
             (delegation) => PersonTile(
               person: delegation.person,
-              trailing: const Icon(Icons.chevron_right, color: muted),
+              trailing: Icon(
+                Icons.chevron_right,
+                color: AppPalette.of(context).muted,
+              ),
               onTap: () async {
                 await go(context, '/assistant/edit', delegation);
                 await _load();
@@ -1508,11 +1709,14 @@ class _AssistantFormState extends State<AssistantForm> {
                     : 'Use at least 10 characters',
               ),
             if (lookedUp && existingUserId != null)
-              const Surface(
-                color: Color(0xffe2edff),
+              Surface(
+                color: AppPalette.of(context).wash(const Color(0xffe2edff)),
                 child: Text(
                   'This email already has an account. Their existing sign-in keeps working.',
-                  style: TextStyle(fontSize: 12, color: muted),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppPalette.of(context).muted,
+                  ),
                 ),
               ),
             const SizedBox(height: 16),
@@ -1528,7 +1732,9 @@ class _AssistantFormState extends State<AssistantForm> {
                 permission == i
                     ? Icons.radio_button_checked
                     : Icons.radio_button_off,
-                color: permission == i ? const Color(0xff628dff) : muted,
+                color: permission == i
+                    ? const Color(0xff628dff)
+                    : AppPalette.of(context).muted,
                 size: 21,
               ),
               title: Text(
@@ -1600,7 +1806,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Surface(
-            color: const Color(0xffe2edff),
+            color: AppPalette.of(context).wash(const Color(0xffe2edff)),
             child: Row(
               children: [
                 Expanded(
@@ -1624,7 +1830,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                 : 'Ends {date}',
                             {'date': formatDay(store.subscription!.expiresAt!)},
                           ),
-                          style: const TextStyle(fontSize: 11, color: muted),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppPalette.of(context).muted,
+                          ),
                         ),
                     ],
                   ),
@@ -1702,7 +1911,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                 color: i == 0
                                     ? Colors.black
                                     : i == 1
-                                    ? const Color(0xffe9e7ef)
+                                    ? AppPalette.of(
+                                        context,
+                                      ).wash(const Color(0xffe9e7ef))
                                     : const Color(0xff5419de),
                                 child: Padding(
                                   padding: const EdgeInsets.all(1),
@@ -1718,7 +1929,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                       color: i == 0
                                           ? Colors.black
                                           : i == 1
-                                          ? Colors.white
+                                          ? AppPalette.of(context).surface
                                           : const Color(0xff5419de),
                                       child: planContent(
                                         context,
@@ -1772,7 +1983,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Widget planContent(BuildContext context, int i, bool active, AppStore store) {
-    final ink = i == 1 ? Colors.black : Colors.white;
+    final ink = i == 1 ? AppPalette.of(context).ink : Colors.white;
     final features = i == 0
         ? ['Up to 50 events/month', 'Basic reminders', 'Manual event entry']
         : [
@@ -2037,7 +2248,10 @@ class _SummaryScreenState extends State<SummaryScreen> {
               children: [
                 Row(
                   children: [
-                    const Text('Plan', style: TextStyle(color: muted)),
+                    Text(
+                      'Plan',
+                      style: TextStyle(color: AppPalette.of(context).muted),
+                    ),
                     const Spacer(),
                     Text(plan),
                   ],
@@ -2045,7 +2259,10 @@ class _SummaryScreenState extends State<SummaryScreen> {
                 const Divider(),
                 Row(
                   children: [
-                    const Text('Price', style: TextStyle(color: muted)),
+                    Text(
+                      'Price',
+                      style: TextStyle(color: AppPalette.of(context).muted),
+                    ),
                     const Spacer(),
                     Text(
                       price,
@@ -2054,9 +2271,12 @@ class _SummaryScreenState extends State<SummaryScreen> {
                   ],
                 ),
                 const Divider(),
-                const Row(
+                Row(
                   children: [
-                    Text('Trial', style: TextStyle(color: muted)),
+                    Text(
+                      'Trial',
+                      style: TextStyle(color: AppPalette.of(context).muted),
+                    ),
                     Spacer(),
                     Text('7 days free'),
                   ],
@@ -2066,10 +2286,14 @@ class _SummaryScreenState extends State<SummaryScreen> {
           ),
           const SizedBox(height: 18),
           Surface(
-            color: const Color(0xffe2edff),
+            color: AppPalette.of(context).wash(const Color(0xffe2edff)),
             child: Text(
               'Premium is billed by the App Store or Play Store. Cancel any time from there; the trial only charges you once it ends.',
-              style: const TextStyle(fontSize: 12, color: muted, height: 1.4),
+              style: TextStyle(
+                fontSize: 12,
+                color: AppPalette.of(context).muted,
+                height: 1.4,
+              ),
             ),
           ),
           const SizedBox(height: 18),
@@ -2106,10 +2330,13 @@ class _SummaryScreenState extends State<SummaryScreen> {
               },
             ),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'This build cannot open the store, so complete the purchase there and come back.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: muted),
+              style: TextStyle(
+                fontSize: 11,
+                color: AppPalette.of(context).muted,
+              ),
             ),
           ],
         ],
@@ -2124,13 +2351,26 @@ class ContactUsScreen extends StatefulWidget {
   State<ContactUsScreen> createState() => _ContactUsScreenState();
 }
 
+/// A screenshot picked for a support request. Its upload id is kept once it
+/// has one, so sending again after a failure does not upload it twice.
+class _Screenshot {
+  _Screenshot(this.path);
+  final String path;
+  String? mediaId;
+}
+
 class _ContactUsScreenState extends State<ContactUsScreen> {
+  static const maxScreenshots = 5;
+
   final form = GlobalKey<FormState>();
   final name = TextEditingController(),
       email = TextEditingController(),
       phone = TextEditingController(),
-      note = TextEditingController();
-  bool initialized = false;
+      subject = TextEditingController(),
+      message = TextEditingController();
+  final screenshots = <_Screenshot>[];
+  bool initialized = false, sending = false;
+  String? sendError;
 
   @override
   void didChangeDependencies() {
@@ -2146,70 +2386,315 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
 
   @override
   void dispose() {
-    name.dispose();
-    email.dispose();
-    phone.dispose();
-    note.dispose();
+    for (final controller in [name, email, phone, subject, message]) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
+  Future<void> _addScreenshots() async {
+    final room = maxScreenshots - screenshots.length;
+    if (room <= 0) return;
+    List<XFile> picked;
+    try {
+      picked = await ImagePicker().pickMultiImage(imageQuality: 85);
+    } catch (error) {
+      if (mounted) {
+        toastError(
+          context,
+          tr('Could not open the picker: {error}', {'error': error}),
+        );
+      }
+      return;
+    }
+    if (!mounted || picked.isEmpty) return;
+    setState(() {
+      screenshots.addAll(
+        picked.take(room).map((file) => _Screenshot(file.path)),
+      );
+    });
+    if (picked.length > room) {
+      toastError(
+        context,
+        tr('You can attach up to {count} screenshots.', {
+          'count': maxScreenshots,
+        }),
+      );
+    }
+  }
+
+  /// Uploads what is not uploaded yet, then sends. Support has the message
+  /// only when this returns without error; until then nothing is cleared, so
+  /// a failure leaves everything in place to send again.
   Future<void> _send() async {
-    if (!form.currentState!.validate()) return;
+    if (sending || !form.currentState!.validate()) return;
     final store = StoreScope.read(context);
-    final done = await runAction(
-      context,
-      () => store.api.legal.submitSupportRequest(
+    setState(() {
+      sending = true;
+      sendError = null;
+    });
+    try {
+      for (final shot in screenshots) {
+        shot.mediaId ??= await store.api.media.upload(
+          filePath: shot.path,
+          purpose: 'SUPPORT_ATTACHMENT',
+        );
+      }
+      await store.api.legal.submitSupportRequest(
         name: name.text.trim(),
         email: email.text.trim(),
         phone: phone.text.trim(),
-        note: note.text.trim(),
+        subject: subject.text.trim(),
+        note: message.text.trim(),
+        mediaIds: [for (final shot in screenshots) shot.mediaId!],
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          sending = false;
+          sendError = error is ApiException
+              ? error.message
+              : tr('Your message could not be sent.');
+        });
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() => sending = false);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.check_circle_rounded, color: purple, size: 40),
+        title: const Text('Message sent'),
+        content: const Text('Thanks — we’ll reply to your email.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Done'),
+          ),
+        ],
       ),
-      success: 'Thanks — support has your message.',
     );
-    if (done && mounted) Navigator.pop(context);
+    if (mounted) Navigator.pop(context);
+  }
+
+  Widget _label(String text, {bool optional = false}) {
+    final palette = AppPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Text(text, style: TextStyle(fontSize: 14, color: palette.ink)),
+          if (optional)
+            Text(
+              ' ${tr('(optional)')}',
+              style: TextStyle(color: palette.muted),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _screenshotsField() {
+    final palette = AppPalette.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label('Screenshots', optional: true),
+        if (screenshots.isNotEmpty) ...[
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final shot in screenshots)
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.file(
+                        File(shot.path),
+                        width: 76,
+                        height: 76,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Container(
+                          width: 76,
+                          height: 76,
+                          color: palette.tint,
+                          child: Icon(
+                            Icons.image_outlined,
+                            color: palette.muted,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: -8,
+                      right: -8,
+                      child: IconButton.filled(
+                        tooltip: tr('Remove screenshot'),
+                        iconSize: 14,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 26,
+                          height: 26,
+                        ),
+                        padding: EdgeInsets.zero,
+                        style: IconButton.styleFrom(
+                          backgroundColor: palette.ink,
+                          foregroundColor: palette.surface,
+                        ),
+                        onPressed: sending
+                            ? null
+                            : () => setState(() => screenshots.remove(shot)),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (screenshots.length < maxScreenshots)
+          Material(
+            color: palette.surface.withValues(alpha: .6),
+            borderRadius: BorderRadius.circular(10),
+            child: InkWell(
+              key: const ValueKey('contact-add-screenshots'),
+              borderRadius: BorderRadius.circular(10),
+              onTap: sending ? null : _addScreenshots,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: palette.accent.withValues(alpha: .5),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.attach_file_rounded, color: palette.accent),
+                    const SizedBox(width: 10),
+                    Text(
+                      screenshots.isEmpty
+                          ? 'Add screenshots'
+                          : 'Add more screenshots',
+                      style: TextStyle(
+                        color: palette.accent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 16),
+      ],
+    );
   }
 
   @override
-  Widget build(BuildContext context) => PageFrame(
-    title: 'Contact Us',
-    child: Form(
-      key: form,
-      child: Column(
-        children: [
-          AppField(
-            'Name',
-            controller: name,
-            hint: 'Your name',
-            validator: (v) =>
-                v == null || v.trim().isEmpty ? 'Enter your name' : null,
-          ),
-          AppField(
-            'Email Address',
-            controller: email,
-            hint: 'email@example.com',
-            keyboard: TextInputType.emailAddress,
-            validator: (v) =>
-                v != null && v.contains('@') ? null : 'Enter your email',
-          ),
-          AppField(
-            'Phone Number',
-            controller: phone,
-            hint: 'Optional',
-            keyboard: TextInputType.phone,
-          ),
-          AppField(
-            'Note',
-            controller: note,
-            hint: 'Describe what you need...',
-            lines: 5,
-            validator: (v) =>
-                v == null || v.trim().isEmpty ? 'Write your message' : null,
-          ),
-          AsyncButton('Send', onPressed: _send),
-        ],
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+    return PageFrame(
+      title: 'Contact us',
+      child: Form(
+        key: form,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'We’ll reply to your email.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: palette.muted),
+            ),
+            const SizedBox(height: 18),
+            AppField(
+              'Name',
+              controller: name,
+              hint: 'Your name',
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? 'Enter your name' : null,
+            ),
+            AppField(
+              'Email',
+              controller: email,
+              hint: 'email@example.com',
+              keyboard: TextInputType.emailAddress,
+              validator: (v) =>
+                  v != null && v.contains('@') ? null : 'Enter your email',
+            ),
+            _label('Phone', optional: true),
+            AppField(
+              '',
+              controller: phone,
+              hint: 'Add a phone number',
+              keyboard: TextInputType.phone,
+            ),
+            AppField(
+              'Subject',
+              key: const ValueKey('contact-subject'),
+              controller: subject,
+              hint: 'e.g. Reminder not working',
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? 'Add a short subject' : null,
+            ),
+            AppField(
+              'Message',
+              key: const ValueKey('contact-message'),
+              controller: message,
+              hint: 'Describe what happened…',
+              lines: 5,
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? 'Write your message' : null,
+            ),
+            _screenshotsField(),
+            if (sendError != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Surface(
+                  key: const ValueKey('contact-error'),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.redAccent,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          tr('{error} Everything you wrote is still here.', {
+                            'error': sendError!,
+                          }),
+                          style: TextStyle(fontSize: 12, color: palette.ink),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: sending ? null : _send,
+                        child: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            sending
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                : PrimaryButton('Send message', onPressed: _send),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class LegalScreen extends StatefulWidget {
@@ -2279,16 +2764,59 @@ class _LegalScreenState extends State<LegalScreen> {
           const SizedBox(height: 6),
           Text(
             tr('Version {version}', {'version': document!.version}),
-            style: const TextStyle(fontSize: 11, color: muted),
+            style: TextStyle(fontSize: 11, color: AppPalette.of(context).muted),
           ),
           const SizedBox(height: 16),
           SelectableText(
             document!.content,
             textAlign: TextAlign.justify,
-            style: const TextStyle(color: muted, fontSize: 14, height: 1.55),
+            style: TextStyle(
+              color: AppPalette.of(context).muted,
+              fontSize: 14,
+              height: 1.55,
+            ),
           ),
         ],
       ],
+    ),
+  );
+}
+
+class AppearanceScreen extends StatelessWidget {
+  const AppearanceScreen({super.key});
+  @override
+  Widget build(BuildContext context) => PageFrame(
+    title: 'Appearance',
+    child: ValueListenableBuilder<ThemeMode>(
+      valueListenable: AppAppearance.listenable,
+      builder: (context, mode, _) => Surface(
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            for (final option in const [
+              (ThemeMode.light, 'Light', Icons.light_mode_outlined),
+              (ThemeMode.dark, 'Dark', Icons.dark_mode_outlined),
+              (
+                ThemeMode.system,
+                'Follow System',
+                Icons.settings_brightness_outlined,
+              ),
+            ])
+              ListTile(
+                leading: Icon(option.$3),
+                title: Text(option.$2),
+                subtitle: option.$1 == ThemeMode.system
+                    ? const Text('Match your device appearance')
+                    : null,
+                trailing: mode == option.$1
+                    ? Icon(Icons.check, color: AppPalette.of(context).accent)
+                    : null,
+                selected: mode == option.$1,
+                onTap: () => AppAppearance.apply(option.$1),
+              ),
+          ],
+        ),
+      ),
     ),
   );
 }

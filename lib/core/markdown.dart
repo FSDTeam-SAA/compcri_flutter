@@ -10,16 +10,32 @@ import 'design.dart';
 /// syntax. Syntax it doesn't know is left exactly as written, which keeps a
 /// stray asterisk looking like a typo instead of a broken bubble.
 class MarkdownText extends StatelessWidget {
-  const MarkdownText(
+  const MarkdownText(this.source, {super.key, this.style, this.accent});
+  final String source;
+  final TextStyle? style;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) => _MarkdownContent(
+    source,
+    style: style,
+    accent: accent ?? AppPalette.of(context).accent,
+    mutedColor: AppPalette.of(context).muted,
+  );
+}
+
+class _MarkdownContent extends StatelessWidget {
+  const _MarkdownContent(
     this.source, {
-    super.key,
     this.style,
-    this.accent = purple,
+    required this.accent,
+    required this.mutedColor,
   });
 
   final String source;
   final TextStyle? style;
   final Color accent;
+  final Color mutedColor;
 
   static final _heading = RegExp(r'^(#{1,6})\s+(.*)$');
   static final _bullet = RegExp(r'^(\s*)[-*+•]\s+(.*)$');
@@ -186,7 +202,7 @@ class MarkdownText extends StatelessWidget {
     ),
     child: _text(
       content,
-      base.copyWith(color: muted, fontStyle: FontStyle.italic),
+      base.copyWith(color: mutedColor, fontStyle: FontStyle.italic),
     ),
   );
 
@@ -194,7 +210,7 @@ class MarkdownText extends StatelessWidget {
     width: double.infinity,
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     decoration: BoxDecoration(
-      color: const Color(0xff151518).withValues(alpha: .045),
+      color: (base.color ?? const Color(0xff151518)).withValues(alpha: .07),
       borderRadius: BorderRadius.circular(10),
       border: Border.all(color: accent.withValues(alpha: .12)),
     ),
@@ -245,7 +261,7 @@ class MarkdownText extends StatelessWidget {
             match[4]!,
             style.copyWith(
               decoration: TextDecoration.lineThrough,
-              color: muted,
+              color: mutedColor,
             ),
           ),
         );
@@ -283,7 +299,7 @@ class StreamedMarkdown extends StatefulWidget {
     this.source, {
     super.key,
     this.style,
-    this.accent = purple,
+    this.accent,
     this.animate = false,
     this.onDone,
     this.onTick,
@@ -291,7 +307,7 @@ class StreamedMarkdown extends StatefulWidget {
 
   final String source;
   final TextStyle? style;
-  final Color accent;
+  final Color? accent;
 
   /// Only the reply that just landed types itself out; history renders whole.
   final bool animate;

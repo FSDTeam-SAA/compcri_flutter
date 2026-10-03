@@ -59,7 +59,8 @@ class FederatedAuth {
       // simply appears to do nothing.
       throw FederatedAuthException(
         'Google sign-in failed (${error.code.name}). '
-        '${error.description ?? ''}'.trim(),
+                '${error.description ?? ''}'
+            .trim(),
       );
     }
   }
@@ -77,10 +78,10 @@ class FederatedAuth {
       if (token == null) {
         throw FederatedAuthException('Apple did not return a sign-in token.');
       }
-      final name = [credential.givenName, credential.familyName]
-          .whereType<String>()
-          .where((part) => part.trim().isNotEmpty)
-          .join(' ');
+      final name = [
+        credential.givenName,
+        credential.familyName,
+      ].whereType<String>().where((part) => part.trim().isNotEmpty).join(' ');
       return AppleIdentity(
         identityToken: token,
         fullName: name.isEmpty ? null : name,

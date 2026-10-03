@@ -82,8 +82,6 @@ class VoiceExperience extends StatefulWidget {
 
 class _VoiceExperienceState extends State<VoiceExperience> {
   static const violet = Color(0xff7c3aed);
-  static const ink = Color(0xff241b39);
-  static const soft = Color(0xff786b90);
 
   @override
   Widget build(BuildContext context) {
@@ -123,8 +121,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
         Expanded(
           child: ListView(
             controller: widget.scroll,
-            keyboardDismissBehavior:
-                ScrollViewKeyboardDismissBehavior.onDrag,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
             children: [
@@ -139,7 +136,9 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                       vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: .8),
+                      color: AppPalette.of(
+                        context,
+                      ).surface.withValues(alpha: .8),
                       borderRadius: BorderRadius.circular(30),
                     ),
                     child: Row(
@@ -152,7 +151,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                               ? Icons.phone_in_talk_rounded
                               : Icons.auto_awesome_rounded,
                           size: 14,
-                          color: violet,
+                          color: AppPalette.of(context).accent,
                         ),
                         const SizedBox(width: 7),
                         Text(
@@ -168,8 +167,8 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                               : widget.handsFree
                               ? 'HANDS-FREE'
                               : 'YOUR VOICE ASSISTANT',
-                          style: const TextStyle(
-                            color: violet,
+                          style: TextStyle(
+                            color: AppPalette.of(context).accent,
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 1,
@@ -186,16 +185,22 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                       ),
                       decoration: BoxDecoration(
                         color: widget.allowanceLow
-                            ? const Color(0xfffdeaf0)
-                            : Colors.white.withValues(alpha: .8),
+                            ? AppPalette.of(
+                                context,
+                              ).wash(const Color(0xfffdeaf0))
+                            : AppPalette.of(
+                                context,
+                              ).surface.withValues(alpha: .8),
                         borderRadius: BorderRadius.circular(30),
                       ),
                       child: Text(
                         widget.allowance!,
                         style: TextStyle(
                           color: widget.allowanceLow
-                              ? const Color(0xffa33f5c)
-                              : soft,
+                              ? AppPalette.of(
+                                  context,
+                                ).foreground(const Color(0xffa33f5c))
+                              : AppPalette.of(context).muted,
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 1,
@@ -225,8 +230,8 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                   status,
                   key: ValueKey(status),
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: ink,
+                  style: TextStyle(
+                    color: AppPalette.of(context).ink,
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
                     height: 1.25,
@@ -238,7 +243,11 @@ class _VoiceExperienceState extends State<VoiceExperience> {
               Text(
                 hint,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: soft, fontSize: 12, height: 1.6),
+                style: TextStyle(
+                  color: AppPalette.of(context).muted,
+                  fontSize: 12,
+                  height: 1.6,
+                ),
               ),
               const SizedBox(height: 16),
               SizedBox(
@@ -267,11 +276,11 @@ class _VoiceExperienceState extends State<VoiceExperience> {
               const SizedBox(height: 22),
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Our conversation',
                       style: TextStyle(
-                        color: ink,
+                        color: AppPalette.of(context).ink,
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
                       ),
@@ -287,7 +296,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                         widget.speaking
                             ? Icons.stop_circle_outlined
                             : Icons.volume_up_outlined,
-                        color: violet,
+                        color: AppPalette.of(context).accent,
                         size: 21,
                       ),
                     ),
@@ -298,17 +307,17 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: .8),
+                    color: AppPalette.of(context).surface.withValues(alpha: .8),
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(color: violet.withValues(alpha: .1)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Not sure where to start?',
                         style: TextStyle(
-                          color: ink,
+                          color: AppPalette.of(context).ink,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -320,8 +329,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                         TextButton(
                           onPressed: disabled || widget.recording
                               ? null
-                              : () =>
-                                    widget.controller.text = tr(suggestion),
+                              : () => widget.controller.text = tr(suggestion),
                           child: Row(
                             children: [
                               const Icon(Icons.north_west_rounded, size: 15),
@@ -348,14 +356,19 @@ class _VoiceExperienceState extends State<VoiceExperience> {
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
             child: Text(
               widget.error!,
-              style: const TextStyle(color: Color(0xffa33f5c), fontSize: 12),
+              style: TextStyle(
+                color: AppPalette.of(
+                  context,
+                ).foreground(const Color(0xffa33f5c)),
+                fontSize: 12,
+              ),
               textAlign: TextAlign.center,
             ),
           ),
         Container(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: .88),
+            color: AppPalette.of(context).surface.withValues(alpha: .88),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             border: Border.all(color: violet.withValues(alpha: .1)),
           ),
@@ -431,9 +444,9 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                       onPressed: widget.sending
                           ? null
                           : () => widget.onSend(widget.controller.text),
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.arrow_upward_rounded,
-                        color: violet,
+                        color: AppPalette.of(context).accent,
                       ),
                     ),
                   ),
@@ -451,7 +464,10 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                         ? IconButton(
                             tooltip: tr('Cancel recording'),
                             onPressed: disabled ? null : widget.onCancel,
-                            icon: const Icon(Icons.close_rounded, color: soft),
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: AppPalette.of(context).muted,
+                            ),
                           )
                         : null,
                   ),
@@ -466,6 +482,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(
                           backgroundColor: violet,
+                          foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(20),
                           ),
@@ -516,7 +533,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                       widget.muted
                           ? Icons.volume_off_outlined
                           : Icons.volume_up_outlined,
-                      color: soft,
+                      color: AppPalette.of(context).muted,
                     ),
                   ),
                 ],
@@ -544,12 +561,13 @@ class _CallChip extends StatelessWidget {
   final VoidCallback? onTap;
 
   static const violet = Color(0xff7c3aed);
-  static const soft = Color(0xff786b90);
 
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    final tint = selected ? violet : soft;
+    final tint = selected
+        ? AppPalette.of(context).accent
+        : AppPalette.of(context).muted;
     return Material(
       color: selected ? violet.withValues(alpha: .1) : Colors.transparent,
       borderRadius: BorderRadius.circular(14),
@@ -561,7 +579,8 @@ class _CallChip extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: (selected ? violet : soft).withValues(alpha: .25),
+              color: (selected ? violet : AppPalette.of(context).muted)
+                  .withValues(alpha: .25),
             ),
           ),
           child: Row(

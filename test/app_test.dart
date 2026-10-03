@@ -4,6 +4,7 @@ import 'package:compcri_flutter/core/api.dart';
 import 'package:compcri_flutter/core/api_client.dart';
 import 'package:compcri_flutter/core/design.dart';
 import 'package:compcri_flutter/core/store.dart';
+import 'package:compcri_flutter/features/settings.dart' show ContactUsScreen;
 import 'package:compcri_flutter/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -55,6 +56,13 @@ class FakeBackend {
   /// that refetch on mount would otherwise overwrite a store set by hand.
   List<Map<String, dynamic>>? notifications;
   List<Map<String, dynamic>>? conversations;
+
+  /// Makes event listing fail, as it does offline or when the API is down.
+  bool failEvents = false;
+
+  /// Contact-us submissions received, and whether the next ones fail.
+  final supportRequests = <Map<String, dynamic>>[];
+  bool failSupport = false;
 
   late final http.Client client = MockClient((request) async {
     requests.add(request);
@@ -119,6 +127,30 @@ class FakeBackend {
         'plan': 'FREE',
         'subscription': {'status': 'FREE'},
       });
+    }
+    if (path == '/support-requests' && method == 'POST') {
+      if (failSupport) {
+        return http.Response(
+          jsonEncode({
+            'success': false,
+            'error': {'code': 'INTERNAL', 'message': 'Server error'},
+          }),
+          500,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      supportRequests.add(body! as Map<String, dynamic>);
+      return _ok({'_id': 'support-1'});
+    }
+    if (failEvents && path.contains('events') && method == 'GET') {
+      return http.Response(
+        jsonEncode({
+          'success': false,
+          'error': {'code': 'INTERNAL', 'message': 'Server error'},
+        }),
+        500,
+        headers: {'content-type': 'application/json'},
+      );
     }
     if (path == '/calendars/$calendarId/events' && method == 'GET') {
       final now = DateTime.now();
@@ -350,7 +382,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Lunch with Ana'),
+      find.widgetWithText(TextFormField, 'Add a title'),
       'Dentist appointment',
     );
     await tester.pumpAndSettle();
@@ -409,6 +441,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Profile'), findsWidgets);
 
+    // The settings list runs below the fold on a small test screen.
+    await tester.ensureVisible(find.widgetWithText(TextButton, 'Logout'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(TextButton, 'Logout'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(TextButton, 'Logout').last);
@@ -452,5 +487,69 @@ void main() {
     // An empty title is omitted so the server derives one from the body.
     expect(backend.createdNotes.single.containsKey('title'), isFalse);
     expect(store.notes.first.body, 'Book the dentist');
+  });
+
+  testWidgets('contact us sends the subject and keeps everything on failure', (
+    tester,
+  ) async {
+    final backend = FakeBackend()..failSupport = true;
+    final store = await bootedStore(tester, backend);
+    await tester.pumpWidget(
+      StoreScope(
+        notifier: store,
+        child: MaterialApp(theme: appTheme, home: const ContactUsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Name and email come from the profile.
+    expect(find.text(store.user!.email), findsOneWidget);
+
+    final send = find.widgetWithText(TextButton, 'Send message');
+    await tester.ensureVisible(send);
+    await tester.tap(send);
+    await tester.pumpAndSettle();
+    expect(find.text('Add a short subject'), findsOneWidget);
+    expect(
+      backend.requests.where((r) => r.url.path.endsWith('/support-requests')),
+      isEmpty,
+    );
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const ValueKey('contact-subject')),
+        matching: find.byType(TextFormField),
+      ),
+      'Reminder not working',
+    );
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const ValueKey('contact-message')),
+        matching: find.byType(TextFormField),
+      ),
+      'No sound five minutes before.',
+    );
+    await tester.ensureVisible(send);
+    await tester.tap(send);
+    await tester.pumpAndSettle();
+
+    // Failed: no confirmation, a retry, and what was typed is still there.
+    expect(find.text('Message sent'), findsNothing);
+    expect(find.byKey(const ValueKey('contact-error')), findsOneWidget);
+    expect(find.text('Reminder not working'), findsOneWidget);
+    expect(find.text('No sound five minutes before.'), findsOneWidget);
+
+    backend.failSupport = false;
+    await tester.tap(find.widgetWithText(TextButton, 'Try again'));
+    await tester.pumpAndSettle();
+    expect(find.text('Message sent'), findsOneWidget);
+    expect(
+      backend.supportRequests.single,
+      containsPair('subject', 'Reminder not working'),
+    );
+    expect(
+      backend.supportRequests.single,
+      containsPair('note', 'No sound five minutes before.'),
+    );
   });
 }

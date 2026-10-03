@@ -5,10 +5,6 @@ import '../core/store.dart';
 import '../core/time.dart';
 import '../core/i18n.dart';
 
-const _amber = Color(0xffb87b00);
-const _amberWash = Color(0xfffff4e0);
-const _free = Color(0xff1f8a5b);
-
 /// "Today", "Tomorrow", or the date.
 String conflictDay(DateTime value) {
   final days = DateUtils.dateOnly(
@@ -22,11 +18,10 @@ String conflictDay(DateTime value) {
   };
 }
 
-String _clock(BuildContext context, DateTime value) =>
-    TimeOfDay.fromDateTime(value).format(context);
+String _clock(BuildContext context, DateTime value) => formatClockAt(value);
 
 String _span(BuildContext context, DateTime startsAt, DateTime endsAt) =>
-    '${_clock(context, startsAt)} – ${_clock(context, endsAt)}';
+    formatClockRange(startsAt, endsAt);
 
 /// How a person would describe a suggestion: "Right after", "Just before", or
 /// the day it falls on.
@@ -45,14 +40,18 @@ class ConflictPanel extends StatelessWidget {
     required this.onPick,
     this.checking = false,
     this.suggestionsTitle = 'Free nearby — tap to switch',
-    this.background = _amberWash,
+    this.background,
+    this.onChangeTime,
   });
 
   final ConflictReport? report;
   final ValueChanged<TimeSlot> onPick;
   final bool checking;
   final String suggestionsTitle;
-  final Color background;
+  final Color? background;
+
+  /// Shows a "Change time" button on a clash when set.
+  final VoidCallback? onChangeTime;
 
   @override
   Widget build(BuildContext context) {
@@ -60,99 +59,172 @@ class ConflictPanel extends StatelessWidget {
     final Widget child;
     if (report == null) {
       child = checking
-          ? const _Status(
+          ? _Status(
               key: ValueKey('checking'),
               icon: SizedBox.square(
                 dimension: 14,
-                child: CircularProgressIndicator(strokeWidth: 2, color: muted),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppPalette.of(context).muted,
+                ),
               ),
               text: 'Checking your calendar…',
-              color: muted,
+              color: AppPalette.of(context).muted,
             )
           : const SizedBox.shrink();
     } else if (report.clear) {
       child = _Status(
         key: const ValueKey('free'),
         icon: checking
-            ? const SizedBox.square(
+            ? SizedBox.square(
                 dimension: 14,
-                child: CircularProgressIndicator(strokeWidth: 2, color: muted),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppPalette.of(context).muted,
+                ),
               )
-            : const Icon(Icons.check_circle_rounded, size: 16, color: _free),
+            : Icon(
+                Icons.check_circle_rounded,
+                size: 16,
+                color: AppPalette.of(
+                  context,
+                ).foreground(const Color(0xff1f8a5b)),
+              ),
         text: checking ? 'Checking your calendar…' : 'You’re free at this time',
-        color: checking ? muted : _free,
+        color: checking
+            ? AppPalette.of(context).muted
+            : AppPalette.of(context).foreground(const Color(0xff1f8a5b)),
       );
     } else {
       child = Surface(
         key: const ValueKey('busy'),
-        color: background,
+        color:
+            background ?? AppPalette.of(context).wash(const Color(0xfffff4e0)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.event_busy_rounded, size: 18, color: _amber),
-                const SizedBox(width: 8),
+                Icon(
+                  Icons.event_busy_rounded,
+                  size: 22,
+                  color: AppPalette.of(
+                    context,
+                  ).foreground(const Color(0xffb87b00)),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    report.conflicts.length == 1
-                        ? 'This overlaps 1 event'
-                        : tr('This overlaps {count} events', {
-                            'count': report.conflicts.length,
-                          }),
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: _amber,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              report.conflicts.length == 1
+                                  ? 'Scheduling conflict'
+                                  : tr('{count} scheduling conflicts', {
+                                      'count': report.conflicts.length,
+                                    }),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: AppPalette.of(
+                                  context,
+                                ).foreground(const Color(0xffb87b00)),
+                              ),
+                            ),
+                          ),
+                          if (checking)
+                            SizedBox.square(
+                              dimension: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppPalette.of(
+                                  context,
+                                ).foreground(const Color(0xffb87b00)),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      for (final conflict in report.conflicts.take(3))
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            '${conflict.title} · ${_span(context, conflict.startsAt, conflict.endsAt)}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      const SizedBox(height: 2),
+                      Text(
+                        report.conflicts.length == 1
+                            ? 'You already have an event at this time.'
+                            : 'You already have events at this time.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppPalette.of(context).muted,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (checking)
-                  const SizedBox.square(
-                    dimension: 14,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: _amber,
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            for (final conflict in report.conflicts.take(3))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    const SizedBox(width: 26),
-                    Expanded(
-                      child: Text(
-                        conflict.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12),
+                if (onChangeTime != null) ...[
+                  const SizedBox(width: 8),
+                  TextButton(
+                    key: const ValueKey('conflict-change-time'),
+                    onPressed: onChangeTime,
+                    style: TextButton.styleFrom(
+                      backgroundColor: AppPalette.of(
+                        context,
+                      ).wash(const Color(0xffffe7bd)),
+                      foregroundColor: AppPalette.of(
+                        context,
+                      ).foreground(const Color(0xffb87b00)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _span(context, conflict.startsAt, conflict.endsAt),
-                      style: const TextStyle(fontSize: 12, color: muted),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Change time',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, size: 18),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                ],
+              ],
+            ),
             if (report.conflicts.length > 3)
               Padding(
-                padding: const EdgeInsets.only(left: 26),
+                padding: const EdgeInsets.only(left: 32),
                 child: Text(
                   tr('+{count} more', {'count': report.conflicts.length - 3}),
-                  style: const TextStyle(fontSize: 11, color: muted),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppPalette.of(context).muted,
+                  ),
                 ),
               ),
             if (report.alternatives.isNotEmpty) ...[
               const SizedBox(height: 10),
               Text(
                 suggestionsTitle,
-                style: const TextStyle(fontSize: 11, color: muted),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppPalette.of(context).muted,
+                ),
               ),
               const SizedBox(height: 6),
               Wrap(
@@ -161,13 +233,13 @@ class ConflictPanel extends StatelessWidget {
                 children: [
                   for (final slot in report.alternatives.take(4))
                     ActionChip(
-                      avatar: const Icon(
+                      avatar: Icon(
                         Icons.event_available_rounded,
                         size: 16,
-                        color: purple,
+                        color: AppPalette.of(context).accent,
                       ),
-                      backgroundColor: Colors.white,
-                      side: const BorderSide(color: Color(0xffd9ccff)),
+                      backgroundColor: AppPalette.of(context).surface,
+                      side: BorderSide(color: AppPalette.of(context).border),
                       label: Text(
                         '${_headline(slot)} · ${_clock(context, slot.startsAt)}',
                         style: const TextStyle(fontSize: 12),
@@ -241,7 +313,6 @@ Future<ConflictDecision?> showConflictSheet(
   String? title,
 }) => showModalBottomSheet<ConflictDecision>(
   context: context,
-  backgroundColor: Colors.white,
   isScrollControlled: true,
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -262,7 +333,7 @@ Future<ConflictDecision?> showConflictSheet(
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xffd9d3e6),
+                  color: AppPalette.of(sheetContext).border,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -272,11 +343,16 @@ Future<ConflictDecision?> showConflictSheet(
               children: [
                 Container(
                   padding: const EdgeInsets.all(10),
-                  decoration: const BoxDecoration(
-                    color: _amberWash,
+                  decoration: BoxDecoration(
+                    color: AppPalette.of(sheetContext).tint,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.event_busy_rounded, color: _amber),
+                  child: Icon(
+                    Icons.event_busy_rounded,
+                    color: AppPalette.of(
+                      context,
+                    ).foreground(const Color(0xffb87b00)),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -295,7 +371,10 @@ Future<ConflictDecision?> showConflictSheet(
                         title == null || title.isEmpty
                             ? 'It overlaps with:'
                             : tr('“{title}” overlaps with:', {'title': title}),
-                        style: const TextStyle(fontSize: 12, color: muted),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppPalette.of(sheetContext).muted,
+                        ),
                       ),
                     ],
                   ),
@@ -308,12 +387,18 @@ Future<ConflictDecision?> showConflictSheet(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _amberWash,
+                  color: AppPalette.of(sheetContext).tint,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.schedule, size: 16, color: _amber),
+                    Icon(
+                      Icons.schedule,
+                      size: 16,
+                      color: AppPalette.of(
+                        context,
+                      ).foreground(const Color(0xffb87b00)),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -326,7 +411,10 @@ Future<ConflictDecision?> showConflictSheet(
                     ),
                     Text(
                       _span(sheetContext, conflict.startsAt, conflict.endsAt),
-                      style: const TextStyle(fontSize: 12, color: muted),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppPalette.of(sheetContext).muted,
+                      ),
                     ),
                   ],
                 ),
@@ -342,7 +430,9 @@ Future<ConflictDecision?> showConflictSheet(
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Material(
-                    color: const Color(0xfff3edff),
+                    color: AppPalette.of(
+                      sheetContext,
+                    ).wash(const Color(0xfff3edff)),
                     borderRadius: BorderRadius.circular(14),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
@@ -354,9 +444,9 @@ Future<ConflictDecision?> showConflictSheet(
                         padding: const EdgeInsets.all(12),
                         child: Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.event_available_rounded,
-                              color: purple,
+                              color: AppPalette.of(sheetContext).accent,
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -372,15 +462,18 @@ Future<ConflictDecision?> showConflictSheet(
                                   ),
                                   Text(
                                     '${conflictDay(slot.startsAt)} · ${_span(sheetContext, slot.startsAt, slot.endsAt)}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
-                                      color: muted,
+                                      color: AppPalette.of(sheetContext).muted,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            const Icon(Icons.chevron_right, color: purple),
+                            Icon(
+                              Icons.chevron_right,
+                              color: AppPalette.of(sheetContext).accent,
+                            ),
                           ],
                         ),
                       ),

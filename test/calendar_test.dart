@@ -133,4 +133,73 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  Future<AppStore> pumpCalendar(
+    WidgetTester tester,
+    FakeBackend backend,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = await bootedStore(tester, backend);
+    await tester.pumpWidget(
+      StoreScope(
+        notifier: store,
+        child: MaterialApp(
+          theme: appTheme,
+          home: const Scaffold(body: SafeArea(child: CalendarTab())),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return store;
+  }
+
+  testWidgets('tapping an empty slot opens the form on that day and time', (
+    tester,
+  ) async {
+    await pumpCalendar(tester, FakeBackend());
+    // A week ahead: nothing is booked, so the day view starts at 9:00.
+    await tester.tap(find.byTooltip('Next week'));
+    await tester.pumpAndSettle();
+
+    final slots = find.byKey(const ValueKey('timeline-slots'));
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -250));
+    await tester.pumpAndSettle();
+    // 80 px per hour from 9:00: 11:10 is 2h10m down, snapping to 11:00.
+    await tester.tapAt(
+      tester.getTopLeft(slots) + const Offset(40, 80 * 2 + 13),
+    );
+    await tester.pumpAndSettle();
+
+    final form = tester.widget<EventForm>(find.byType(EventForm));
+    final expected = DateTime.now().add(const Duration(days: 7));
+    expect(DateUtils.isSameDay(form.initialStart, expected), isTrue);
+    expect(form.initialStart!.hour, 11);
+    expect(form.initialStart!.minute, 0);
+    // Opened, not saved: nothing is created until the user confirms.
+    expect(find.text('Duration: 1 hour'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('a failed load offers a retry and never claims free time', (
+    tester,
+  ) async {
+    final backend = FakeBackend()..failEvents = true;
+    await pumpCalendar(tester, backend);
+
+    debugPrint(
+      'DBG ${find.byType(RichText).evaluate().map((e) => (e.widget as RichText).text.toPlainText()).toList()}',
+    );
+    expect(find.byKey(const ValueKey('calendar-retry')), findsOneWidget);
+    expect(find.textContaining('free · tap to add'), findsNothing);
+
+    backend.failEvents = false;
+    await tester.tap(find.byKey(const ValueKey('calendar-retry')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('calendar-retry')), findsNothing);
+    expect(find.textContaining('free · tap to add'), findsWidgets);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

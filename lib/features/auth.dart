@@ -42,7 +42,7 @@ class _SplashScreenState extends State<SplashScreen> {
   /// invisible and the user sees one splash rather than two.
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
+    backgroundColor: AppPalette.of(context).surface,
     // Without the expand the stack shrinks to the logo and parks it in the
     // top-left corner instead of the middle of the screen.
     body: SizedBox.expand(
@@ -204,10 +204,7 @@ class _AuthScreenState extends State<AuthScreen> {
         return;
       }
       if (token == null || !mounted) return;
-      final ok = await runAction(
-        context,
-        () => store.signInWithGoogle(token!),
-      );
+      final ok = await runAction(context, () => store.signInWithGoogle(token!));
       if (ok && mounted) home(context);
     });
   }
@@ -244,7 +241,7 @@ class _AuthScreenState extends State<AuthScreen> {
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.of(dialogContext).surface,
         title: const Text('Account scheduled for deletion'),
         content: const Text(
           'This account is in its recovery window. Restore it now to sign back in.',
@@ -299,7 +296,7 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _showAccountReady(String code) => showDialog<void>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      backgroundColor: Colors.white,
+      backgroundColor: AppPalette.of(dialogContext).surface,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -322,13 +319,16 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
           const SizedBox(height: 20),
           Surface(
-            color: const Color(0xffdef5fa),
+            color: AppPalette.of(context).wash(const Color(0xffdef5fa)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Your unique account code',
-                  style: TextStyle(color: muted, fontSize: 11),
+                  style: TextStyle(
+                    color: AppPalette.of(context).muted,
+                    fontSize: 11,
+                  ),
                 ),
                 Row(
                   children: [
@@ -346,9 +346,12 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                   ],
                 ),
-                const Text(
+                Text(
                   'Share this code so contacts can find you in the app',
-                  style: TextStyle(fontSize: 10, color: muted),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: AppPalette.of(context).muted,
+                  ),
                 ),
               ],
             ),
@@ -539,9 +542,9 @@ class _AuthScreenState extends State<AuthScreen> {
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
                         ],
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 21,
-                          color: purple,
+                          color: AppPalette.of(context).accent,
                           fontWeight: FontWeight.w600,
                         ),
                         decoration: const InputDecoration(
@@ -637,8 +640,10 @@ class _AuthScreenState extends State<AuthScreen> {
               const SizedBox(height: 22),
               TextButton(
                 style: TextButton.styleFrom(
-                  backgroundColor: const Color(0xfff4f5ff),
-                  foregroundColor: Colors.black,
+                  backgroundColor: AppPalette.of(
+                    context,
+                  ).wash(const Color(0xfff4f5ff)),
+                  foregroundColor: AppPalette.of(context).ink,
                   minimumSize: const Size.fromHeight(48),
                 ),
                 onPressed: busy ? null : _signInWithGoogle,

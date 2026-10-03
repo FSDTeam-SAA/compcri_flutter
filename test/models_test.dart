@@ -77,6 +77,9 @@ void main() {
     });
 
     test('maps reminder and repeat labels in both directions', () {
+      expect(CalendarEvent.reminderOptions, contains('5 Minutes'));
+      expect(CalendarEvent.minutesForLabel('5 Minutes'), [5]);
+      expect(CalendarEvent.minutesForLabel('17 Minutes'), [17]);
       expect(CalendarEvent.minutesForLabel('1 Hour'), [60]);
       expect(CalendarEvent.minutesForLabel('None'), isEmpty);
       expect(CalendarEvent.reminderLabel(const [10]), '10 Minutes');

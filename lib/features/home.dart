@@ -8,8 +8,6 @@ import 'events.dart';
 import 'notes.dart';
 import '../core/i18n.dart';
 
-const _ink = Color(0xff1e1930);
-const _muted = Color(0xff6f6688);
 const _violet = Color(0xff7c3aed);
 
 class HomeTab extends StatelessWidget {
@@ -38,7 +36,7 @@ class HomeTab extends StatelessWidget {
           })
         : tr('next in {minutes}m', {'minutes': until.inMinutes});
     return RefreshIndicator(
-      color: _violet,
+      color: AppPalette.of(context).accent,
       onRefresh: () async {
         try {
           await Future.wait([
@@ -64,7 +62,7 @@ class HomeTab extends StatelessWidget {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Material(
-                    color: Colors.white.withValues(alpha: .8),
+                    color: AppPalette.of(context).surface.withValues(alpha: .8),
                     shape: StadiumBorder(
                       side: BorderSide(color: _violet.withValues(alpha: .12)),
                     ),
@@ -79,10 +77,10 @@ class HomeTab extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.calendar_month_outlined,
                               size: 18,
-                              color: _violet,
+                              color: AppPalette.of(context).accent,
                             ),
                             const SizedBox(width: 8),
                             Flexible(
@@ -90,8 +88,8 @@ class HomeTab extends StatelessWidget {
                                 DateFormat('EEE, MMM d').format(now),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: _ink,
+                                style: TextStyle(
+                                  color: AppPalette.of(context).ink,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -115,12 +113,14 @@ class HomeTab extends StatelessWidget {
                 child: IconButton(
                   tooltip: tr('Notifications'),
                   style: IconButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha: .8),
+                    backgroundColor: AppPalette.of(
+                      context,
+                    ).surface.withValues(alpha: .8),
                   ),
                   onPressed: () => go(context, '/notifications'),
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.notifications_none_rounded,
-                    color: Color(0xff4a3f66),
+                    color: AppPalette.of(context).ink,
                     size: 22,
                   ),
                 ),
@@ -148,10 +148,10 @@ class HomeTab extends StatelessWidget {
               'greeting': greeting(),
               'name': store.user?.firstNameOrEmail ?? tr('there'),
             }),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.w800,
-              color: _ink,
+              color: AppPalette.of(context).ink,
               letterSpacing: -.7,
               height: 1.2,
             ),
@@ -161,47 +161,54 @@ class HomeTab extends StatelessWidget {
             today.isEmpty
                 ? 'Your day, with a little more breathing room.'
                 : '${trCount(today.length, '{count} event today', '{count} events today')}${nextLabel.isEmpty ? '' : ' · $nextLabel'}',
-            style: const TextStyle(fontSize: 13, color: _muted, height: 1.5),
+            style: TextStyle(
+              fontSize: 13,
+              color: AppPalette.of(context).muted,
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 16),
           Center(child: VoiceOrb(size: 184, onTap: onVoice)),
           const SizedBox(height: 4),
-          const Center(
+          Center(
             child: Text(
               'Tap and say it',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
-                color: _violet,
+                color: AppPalette.of(context).accent,
               ),
             ),
           ),
           const SizedBox(height: 8),
-          const Center(
+          Center(
             child: Text(
               'Make a plan. Leave the details to me.',
-              style: TextStyle(fontSize: 12, color: _muted),
+              style: TextStyle(
+                fontSize: 12,
+                color: AppPalette.of(context).muted,
+              ),
             ),
           ),
           const SizedBox(height: 24),
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Today',
                   style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    color: _ink,
+                    color: AppPalette.of(context).ink,
                   ),
                 ),
               ),
               TextButton(
                 onPressed: onCalendar,
-                child: const Text(
+                child: Text(
                   'View all',
                   style: TextStyle(
-                    color: _violet,
+                    color: AppPalette.of(context).accent,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
@@ -217,13 +224,13 @@ class HomeTab extends StatelessWidget {
                 padding: const EdgeInsets.all(18),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.wb_sunny_outlined,
-                      color: _violet,
+                      color: AppPalette.of(context).accent,
                       size: 28,
                     ),
                     const SizedBox(width: 14),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -231,13 +238,16 @@ class HomeTab extends StatelessWidget {
                             'A fresh start',
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: _ink,
+                              color: AppPalette.of(context).ink,
                             ),
                           ),
                           SizedBox(height: 5),
                           Text(
                             'Tap + to plan something good.',
-                            style: TextStyle(color: _muted, fontSize: 12),
+                            style: TextStyle(
+                              color: AppPalette.of(context).muted,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -287,7 +297,7 @@ class HomeTab extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
-                                    color: _ink,
+                                    color: AppPalette.of(context).ink,
                                     decoration: event.completed
                                         ? TextDecoration.lineThrough
                                         : null,
@@ -295,12 +305,12 @@ class HomeTab extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 5),
                                 Text(
-                                  '${event.start.format(context)}${event.location.isEmpty ? ' – ${event.end.format(context)}' : ' · ${event.location}'}',
+                                  '${formatClock(event.start)}${event.location.isEmpty ? ' – ${formatClock(event.end)}' : ' · ${event.location}'}',
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
-                                    color: _muted,
+                                    color: AppPalette.of(context).muted,
                                   ),
                                 ),
                               ],
@@ -316,13 +326,15 @@ class HomeTab extends StatelessWidget {
                                   vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xffede9fe),
+                                  color: AppPalette.of(
+                                    context,
+                                  ).wash(const Color(0xffede9fe)),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
-                                child: const Text(
+                                child: Text(
                                   'Up next',
                                   style: TextStyle(
-                                    color: _violet,
+                                    color: AppPalette.of(context).accent,
                                     fontSize: 10,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -339,12 +351,12 @@ class HomeTab extends StatelessWidget {
             }),
           if (store.invitations.isNotEmpty) ...[
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Invitations',
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
-                color: _ink,
+                color: AppPalette.of(context).ink,
               ),
             ),
             const SizedBox(height: 12),
@@ -369,7 +381,7 @@ class _HomeCard extends StatelessWidget {
   final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => Material(
-    color: Colors.white.withValues(alpha: .88),
+    color: AppPalette.of(context).surface.withValues(alpha: .88),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(20),
       side: BorderSide(color: _violet.withValues(alpha: .1)),
@@ -395,7 +407,7 @@ class DashboardNav extends StatelessWidget {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .95),
+        color: AppPalette.of(context).surface.withValues(alpha: .95),
         borderRadius: BorderRadius.circular(26),
         border: Border.all(color: _violet.withValues(alpha: .1)),
         boxShadow: [
@@ -452,7 +464,7 @@ class DashboardNav extends StatelessWidget {
                                       ][i],
                                       color: selected == i
                                           ? Colors.white
-                                          : const Color(0xff8b7fb0),
+                                          : AppPalette.of(context).muted,
                                       size: 23,
                                     ),
                                     if (selected == i) ...[

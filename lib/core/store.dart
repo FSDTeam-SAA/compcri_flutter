@@ -125,11 +125,18 @@ class AppStore extends ChangeNotifier {
     if (session != null) {
       try {
         await loadProfile();
-        await Future.wait([loadEvents(), loadNetwork(), loadNotifications()]);
-        unawaited(PushMessaging.instance.start(this));
       } on ApiException {
         // A stale or rejected session drops the user back to sign-in.
         await signOut(callServer: false);
+      }
+      if (isSignedIn) {
+        unawaited(PushMessaging.instance.start(this));
+        // The session is good; a list that fails to load is not a reason to
+        // sign anyone out. Each screen shows it as unloaded and offers a retry.
+        await Future.wait([
+          for (final load in [loadEvents, loadNetwork, loadNotifications])
+            load().catchError((Object _) {}),
+        ]);
       }
     }
     booted = true;
@@ -227,8 +234,8 @@ class AppStore extends ChangeNotifier {
     signedOutRemotely = false;
     notifyListeners();
     await loadProfile();
-    await Future.wait([loadEvents(), loadNetwork(), loadNotifications()]);
     unawaited(PushMessaging.instance.start(this));
+    await Future.wait([loadEvents(), loadNetwork(), loadNotifications()]);
   }
 
   Future<void> signIn(String email, String password) async =>
@@ -288,6 +295,7 @@ class AppStore extends ChangeNotifier {
   }
 
   void _handleSignedOut() {
+    unawaited(PushMessaging.instance.stop(api));
     _clear();
     signedOutRemotely = true;
     notifyListeners();
@@ -323,6 +331,49 @@ class AppStore extends ChangeNotifier {
   void _adoptLanguage() {
     final code = user?.locale;
     if (code != null && code != I18n.locale) unawaited(I18n.apply(code));
+    _adoptTimeFormat();
+  }
+
+  /// The profile holds the clock format too, so a choice follows the user to
+  /// every device, and the server knows the phone's own setting so reminders
+  /// and the assistant write times the way this person reads them.
+  void _adoptTimeFormat() {
+    final current = user;
+    if (current == null) return;
+    final format = TimeFormat.fromServer(current.timeFormat);
+    if (format != ClockFormat.preference) unawaited(ClockFormat.apply(format));
+    final device = ClockFormat.deviceUses24Hour;
+    if (current.deviceUses24Hour != device) {
+      // Fire and forget: nothing on screen depends on it, and the next
+      // profile load carries the stored value.
+      unawaited(
+        api.users
+            .updateProfile({'deviceUses24Hour': device})
+            .then(
+              (_) {},
+              onError: (Object _) {
+                // Not worth interrupting anyone; the server falls back to the
+                // language's usual format.
+              },
+            ),
+      );
+    }
+  }
+
+  /// Switches the clock format at once, then saves it to the profile.
+  Future<void> setTimeFormat(TimeFormat format) async {
+    final previous = ClockFormat.preference;
+    await ClockFormat.apply(format);
+    notifyListeners();
+    if (user == null) return;
+    try {
+      user = await api.users.updateProfile({'timeFormat': format.server});
+      notifyListeners();
+    } catch (_) {
+      await ClockFormat.apply(previous);
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> updateAvatar(String filePath) async {
@@ -346,6 +397,7 @@ class AppStore extends ChangeNotifier {
     if (key == null) return;
     user = await api.users.updateNotificationPreferences({key: value});
     notifyListeners();
+    await PushMessaging.instance.start(this, requestPermission: value);
   }
 
   Future<void> setLanguage(String label) =>
@@ -370,8 +422,6 @@ class AppStore extends ChangeNotifier {
   Future<void> loadEvents({DateTime? anchor, bool silent = false}) async {
     if (calendarId.isEmpty) return;
     final window = monthWindow(anchor ?? DateTime.now());
-    _windowFrom = window.from;
-    _windowTo = window.to;
     if (!silent) {
       loadingEvents = true;
       notifyListeners();
@@ -387,6 +437,11 @@ class AppStore extends ChangeNotifier {
       ]);
       events = results[0];
       sharedEvents = results[1];
+      // Only a fetch that succeeded counts as loaded. Recording the window up
+      // front let a failed load pass for an empty calendar, and the day view
+      // then called the whole day free.
+      _windowFrom = window.from;
+      _windowTo = window.to;
     } finally {
       loadingEvents = false;
       notifyListeners();
@@ -394,6 +449,11 @@ class AppStore extends ChangeNotifier {
   }
 
   /// Ensures [day] falls inside the loaded window, fetching more if not.
+  /// Whether [day]'s events have actually been fetched, so an empty day
+  /// really is free rather than unknown.
+  bool hasEventsFor(DateTime day) =>
+      !day.isBefore(_windowFrom) && day.isBefore(_windowTo);
+
   Future<void> ensureWindow(DateTime day) async {
     if (day.isAfter(_windowFrom) && day.isBefore(_windowTo)) return;
     await loadEvents(anchor: day, silent: true);
@@ -407,7 +467,7 @@ class AppStore extends ChangeNotifier {
     String? location,
     String? posterMediaId,
     String? recurrenceRrule,
-    List<int> reminderMinutes = const <int>[],
+    List<int> reminderMinutes = const <int>[10],
     bool overrideConflicts = false,
     String? groupId,
   }) async {
@@ -440,7 +500,7 @@ class AppStore extends ChangeNotifier {
     String? location,
     Object? posterMediaId,
     String? recurrenceRrule,
-    List<int> reminderMinutes = const <int>[],
+    List<int>? reminderMinutes,
     bool overrideConflicts = false,
   }) async {
     final result = await api.events.update(
@@ -453,7 +513,7 @@ class AppStore extends ChangeNotifier {
       startsAt: startsAt,
       endsAt: endsAt,
       timeZone: event.timeZone,
-      reminderMinutes: reminderMinutes,
+      reminderMinutes: reminderMinutes ?? event.reminderMinutes,
       recurrenceRrule: recurrenceRrule,
       overrideConflicts: overrideConflicts,
     );

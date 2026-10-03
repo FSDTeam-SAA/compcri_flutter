@@ -467,7 +467,7 @@ class AppStore extends ChangeNotifier {
     String? location,
     String? posterMediaId,
     String? recurrenceRrule,
-    List<int> reminderMinutes = const <int>[10],
+    List<int> reminderMinutes = const <int>[0],
     bool overrideConflicts = false,
     String? groupId,
   }) async {

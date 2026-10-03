@@ -77,10 +77,15 @@ void main() {
     });
 
     test('maps reminder and repeat labels in both directions', () {
+      expect(CalendarEvent.reminderOptions, contains('At event time'));
+      expect(CalendarEvent.minutesForLabel('At event time'), [0]);
+      expect(CalendarEvent.reminderLabel(const [0]), 'At event time');
+      expect(CalendarEvent.reminderLabel(const [0, 10]), '10 Minutes');
+      expect(CalendarEvent.reminderLabel(const [10, 0]), '10 Minutes');
       expect(CalendarEvent.reminderOptions, contains('5 Minutes'));
-      expect(CalendarEvent.minutesForLabel('5 Minutes'), [5]);
-      expect(CalendarEvent.minutesForLabel('17 Minutes'), [17]);
-      expect(CalendarEvent.minutesForLabel('1 Hour'), [60]);
+      expect(CalendarEvent.minutesForLabel('5 Minutes'), [0, 5]);
+      expect(CalendarEvent.minutesForLabel('17 Minutes'), [0, 17]);
+      expect(CalendarEvent.minutesForLabel('1 Hour'), [0, 60]);
       expect(CalendarEvent.minutesForLabel('None'), isEmpty);
       expect(CalendarEvent.reminderLabel(const [10]), '10 Minutes');
       expect(CalendarEvent.reminderLabel(const []), 'None');
@@ -89,6 +94,19 @@ void main() {
       expect(CalendarEvent.rruleForLabel('Never'), isNull);
       expect(CalendarEvent.repeatLabel('RRULE:FREQ=MONTHLY'), 'Monthly');
       expect(CalendarEvent.repeatLabel(null), 'Never');
+    });
+
+    test('explains both event time and advance reminders', () {
+      final event = CalendarEvent.fromJson({
+        'title': 'Test',
+        'reminderMinutes': [0, 10],
+      });
+      expect(event.reminderDescription, 'At event time + 10 min before');
+      final existing = CalendarEvent.fromJson({
+        'reminderMinutes': [10],
+      });
+      expect(existing.reminderDescription, 'At event time + 10 min before');
+      expect(CalendarEvent.fromJson({}).reminderMinutes, [0]);
     });
 
     test('completion is derived from completedAt', () {

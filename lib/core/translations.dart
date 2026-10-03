@@ -94,6 +94,17 @@ const _pt = <String, String>{
   'Subscription Updates': 'Atualizações da assinatura',
   'Calendar': 'Calendário',
   'None': 'Nenhum',
+  'At event time': 'No horário do evento',
+  '{minutes} min before': '{minutes} min antes',
+  'Reminders are off for this event.':
+      'Os lembretes estão desativados para este evento.',
+  'Event-time notification is included. Choose an advance reminder for an extra notification before the event.':
+      'A notificação no horário do evento está incluída. Escolha um lembrete antecipado para receber uma notificação extra antes do evento.',
+  'The advance reminder time has passed. You will still be notified when the event starts.':
+      'O horário do lembrete antecipado já passou. Você ainda será notificado quando o evento começar.',
+  'Events notify at their start time by default. Advance reminders are optional. Alarm-style Reminders adds sound; turning it off keeps notifications enabled.':
+      'Por padrão, os eventos notificam no horário de início. Lembretes antecipados são opcionais. Lembretes tipo alarme adicionam som; desativá-los mantém as notificações ativadas.',
+
   '10 Minutes': '10 minutos',
   '30 Minutes': '30 minutos',
   '1 Hour': '1 hora',
@@ -984,6 +995,17 @@ const _es = <String, String>{
   'Subscription Updates': 'Novedades de la suscripción',
   'Calendar': 'Calendario',
   'None': 'Ninguno',
+  'At event time': 'A la hora del evento',
+  '{minutes} min before': '{minutes} min antes',
+  'Reminders are off for this event.':
+      'Los recordatorios están desactivados para este evento.',
+  'Event-time notification is included. Choose an advance reminder for an extra notification before the event.':
+      'La notificación a la hora del evento está incluida. Elige un recordatorio anticipado para recibir una notificación extra antes del evento.',
+  'The advance reminder time has passed. You will still be notified when the event starts.':
+      'La hora del recordatorio anticipado ya pasó. Recibirás una notificación cuando empiece el evento.',
+  'Events notify at their start time by default. Advance reminders are optional. Alarm-style Reminders adds sound; turning it off keeps notifications enabled.':
+      'Por defecto, los eventos notifican a su hora de inicio. Los recordatorios anticipados son opcionales. Recordatorios tipo alarma añade sonido; desactivarlo mantiene las notificaciones activadas.',
+
   '10 Minutes': '10 minutos',
   '30 Minutes': '30 minutos',
   '1 Hour': '1 hora',

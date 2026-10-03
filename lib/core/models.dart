@@ -301,7 +301,7 @@ class CalendarEvent {
     this.description = '',
     this.location = '',
     this.timeZone = 'UTC',
-    this.reminderMinutes = const <int>[],
+    this.reminderMinutes = const <int>[0],
     this.recurrenceRrule,
     this.poster,
     this.groupId,
@@ -363,6 +363,18 @@ class CalendarEvent {
   TimeOfDay get end => TimeOfDay.fromDateTime(occurrenceEndAt);
 
   String get reminder => reminderLabel(reminderMinutes);
+
+  String get reminderDescription {
+    if (reminderMinutes.isEmpty) return tr('None');
+    final advance = reminderMinutes.where((minutes) => minutes > 0).toSet();
+    return [
+      tr('At event time'),
+      ...advance.map(
+        (minutes) => tr('{minutes} min before', {'minutes': minutes}),
+      ),
+    ].join(' + ');
+  }
+
   String get repeat => repeatLabel(recurrenceRrule);
 
   factory CalendarEvent.fromJson(
@@ -388,7 +400,7 @@ class CalendarEvent {
       occurrenceOriginalStartAt: _date(json['occurrenceOriginalStartAt']),
       reminderMinutes: reminders is List
           ? reminders.map((value) => (value as num).toInt()).toList()
-          : const <int>[],
+          : const <int>[0],
       recurrenceRrule: json['recurrenceRrule'] as String?,
       poster: MediaAsset.parse(json['posterMediaId']),
       groupId: _id(json['groupId']),
@@ -443,6 +455,7 @@ class CalendarEvent {
 
   static const reminderOptions = [
     'None',
+    'At event time',
     '5 Minutes',
     '10 Minutes',
     '30 Minutes',
@@ -452,7 +465,9 @@ class CalendarEvent {
 
   static String reminderLabel(List<int> minutes) {
     if (minutes.isEmpty) return 'None';
-    switch (minutes.first) {
+    final advance = minutes.where((value) => value > 0);
+    if (advance.isEmpty) return 'At event time';
+    switch (advance.first) {
       case 10:
         return '10 Minutes';
       case 30:
@@ -460,23 +475,27 @@ class CalendarEvent {
       case 60:
         return '1 Hour';
       default:
-        return '${minutes.first} Minutes';
+        return '${advance.first} Minutes';
     }
   }
 
   static List<int> minutesForLabel(String label) {
     switch (label) {
+      case 'At event time':
+        return [0];
       case '5 Minutes':
-        return [5];
+        return [0, 5];
       case '10 Minutes':
-        return [10];
+        return [0, 10];
       case '30 Minutes':
-        return [30];
+        return [0, 30];
       case '1 Hour':
-        return [60];
+        return [0, 60];
       default:
         final match = RegExp(r'^(\d+) Minutes$').firstMatch(label);
-        return match == null ? const <int>[] : [int.parse(match.group(1)!)];
+        if (match == null) return const <int>[];
+        final minutes = int.parse(match.group(1)!);
+        return minutes == 0 ? [0] : [0, minutes];
     }
   }
 

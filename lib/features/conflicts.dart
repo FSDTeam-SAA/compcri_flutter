@@ -287,7 +287,9 @@ class _Status extends StatelessWidget {
     children: [
       icon,
       const SizedBox(width: 8),
-      Text(text, style: TextStyle(fontSize: 12, color: color)),
+      Expanded(
+        child: Text(text, style: TextStyle(fontSize: 12, color: color)),
+      ),
     ],
   );
 }

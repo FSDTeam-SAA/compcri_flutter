@@ -1333,6 +1333,11 @@ class _NotificationSettingsScreenState
             },
           ),
           const SizedBox(height: 12),
+          const Text(
+            'Events notify at their start time by default. Advance reminders are optional. Alarm-style Reminders adds sound; turning it off keeps notifications enabled.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
           Surface(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Column(

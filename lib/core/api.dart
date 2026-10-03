@@ -313,7 +313,7 @@ class EventApi {
     String? posterMediaId,
     String? recurrenceRrule,
     String? groupId,
-    List<int> reminderMinutes = const <int>[10],
+    List<int> reminderMinutes = const <int>[0],
     String? timeZone,
     bool overrideConflicts = false,
   }) async => EventMutation.fromJson(
@@ -609,7 +609,7 @@ class NetworkApi {
     required DateTime endsAt,
     String? description,
     String? location,
-    List<int> reminderMinutes = const <int>[10],
+    List<int> reminderMinutes = const <int>[0],
     bool overrideConflicts = false,
   }) async {
     final data = _map(

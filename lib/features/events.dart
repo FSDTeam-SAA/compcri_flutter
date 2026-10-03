@@ -207,7 +207,7 @@ class _EventFormState extends State<EventForm> {
   // to be reminded about simply passed in silence, which reads as push being
   // broken rather than as a field they never opened. Editing an existing event
   // still loads whatever it was saved with.
-  String reminder = '10 Minutes', repeat = 'Never';
+  String reminder = 'At event time', repeat = 'Never';
 
   /// Newly uploaded poster id, or the existing one when unchanged.
   String? posterMediaId;
@@ -749,6 +749,34 @@ class _EventFormState extends State<EventForm> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            Text(
+              reminder == 'None'
+                  ? 'Reminders are off for this event.'
+                  : 'Event-time notification is included. Choose an advance reminder for an extra notification before the event.',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppPalette.of(context).muted,
+              ),
+            ),
+            if (reminder != 'None' &&
+                CalendarEvent.minutesForLabel(reminder).any(
+                  (minutes) =>
+                      minutes > 0 &&
+                      !_range().$1
+                          .subtract(Duration(minutes: minutes))
+                          .isAfter(DateTime.now()),
+                ))
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'The advance reminder time has passed. You will still be notified when the event starts.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppPalette.of(context).muted,
+                  ),
+                ),
+              ),
             AppField('Location', hint: 'Add a location', controller: location),
             AppField(
               'Description',
@@ -947,7 +975,7 @@ class _EventDetailsState extends State<EventDetails> {
               Icons.location_on_outlined,
               event.location.isEmpty ? 'No location added' : event.location,
             ),
-            (Icons.alarm, event.reminder),
+            (Icons.alarm, event.reminderDescription),
             (Icons.repeat, event.repeat),
           ].map(
             (row) => Padding(

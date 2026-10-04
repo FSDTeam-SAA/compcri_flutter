@@ -2,12 +2,11 @@ import 'package:compcri_flutter/core/design.dart';
 import 'package:compcri_flutter/core/store.dart';
 import 'package:compcri_flutter/features/events.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPicker;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'app_test.dart' show FakeBackend, bootedStore;
 
-const explanation =
-    'Event-time notification is included. Choose an advance reminder for an extra notification before the event.';
 const passedTime =
     'The advance reminder time has passed. You will still be notified when the event starts.';
 
@@ -34,11 +33,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final reminder = find.byWidgetPredicate(
-        (widget) => widget is SelectField && widget.label == 'Reminder',
-      );
-      expect(tester.widget<SelectField>(reminder).value, 'At event time');
-      expect(find.text(explanation), findsOneWidget);
+      final reminder = find.byKey(const ValueKey('event-reminder'));
+      expect(find.text('At event time'), findsOneWidget);
+      expect(find.textContaining('Alerts:'), findsOneWidget);
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Add a title'),
         'Two-minute event',
@@ -46,13 +43,22 @@ void main() {
       if (choice != 'At event time') {
         await tester.ensureVisible(reminder);
         await tester.pumpAndSettle();
-        final dropdown = find.descendant(
-          of: reminder,
-          matching: find.byType(DropdownButtonFormField<String>),
-        );
-        await tester.tap(dropdown);
+        await tester.tap(reminder);
         await tester.pumpAndSettle();
-        await tester.tap(find.text(choice).last);
+        if (choice == 'None') {
+          await tester.tap(find.byKey(const ValueKey('reminder-off')));
+        } else {
+          await tester.tap(find.byKey(const ValueKey('reminder-before')));
+          await tester.pumpAndSettle();
+          tester
+              .widget<CupertinoPicker>(
+                find.byKey(const ValueKey('reminder-amount')),
+              )
+              .scrollController!
+              .jumpToItem(9);
+        }
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('reminder-apply')));
         await tester.pumpAndSettle();
       }
       if (choice == '10 Minutes') expect(find.text(passedTime), findsOneWidget);
@@ -62,13 +68,7 @@ void main() {
       final submit = find.widgetWithText(TextButton, 'Create Event');
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        submit,
-        250,
-        scrollable: find
-            .ancestor(of: submit, matching: find.byType(Scrollable))
-            .first,
-      );
+      await tester.ensureVisible(submit);
       await tester.pumpAndSettle();
       await tester.tap(submit);
       await tester.pumpAndSettle();

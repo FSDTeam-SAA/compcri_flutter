@@ -389,6 +389,7 @@ class EventApi {
     String? location,
     DateTime? startsAt,
     DateTime? endsAt,
+    List<int>? reminderMinutes,
     bool overrideConflicts = false,
   }) async => EventMutation.fromJson(
     _map(
@@ -406,6 +407,7 @@ class EventApi {
               'location': ?location,
               if (startsAt != null) 'startsAt': isoUtc(startsAt),
               if (endsAt != null) 'endsAt': isoUtc(endsAt),
+              'reminderMinutes': ?reminderMinutes,
             },
         },
       ),

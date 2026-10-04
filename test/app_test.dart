@@ -64,8 +64,14 @@ class FakeBackend {
   final supportRequests = <Map<String, dynamic>>[];
   bool failSupport = false;
 
+  /// Lets feature tests serve event detail and mutation responses while
+  /// retaining the shared authentication and profile fixtures.
+  Future<http.Response?> Function(http.Request)? handler;
+
   late final http.Client client = MockClient((request) async {
     requests.add(request);
+    final handled = await handler?.call(request);
+    if (handled != null) return handled;
     final path = request.url.path.replaceFirst('/api/v1', '');
     final method = request.method;
 
@@ -419,15 +425,23 @@ void main() {
       'recurrenceRrule': 'RRULE:FREQ=WEEKLY',
       '__v': 4,
     });
-    store.events = [occurrence];
+    final nextOccurrence = occurrence.copyWith(
+      occurrenceStartAt: DateTime.utc(2026, 9, 28, 9).toLocal(),
+      occurrenceEndAt: DateTime.utc(2026, 9, 28, 9, 15).toLocal(),
+      occurrenceOriginalStartAt: DateTime.utc(2026, 9, 28, 9).toLocal(),
+    );
+    store.events = [occurrence, nextOccurrence];
 
     // The completion endpoint answers with the stored series document only.
     await tester.runAsync(() => store.setEventCompleted(occurrence, true));
 
-    final updated = store.events.single;
+    final updated = store.events.first;
     expect(updated.completed, isTrue);
     expect(updated.occurrenceStartAt.toUtc().month, 9);
     expect(updated.occurrenceStartAt.toUtc().day, 21);
+    expect(store.events.last.occurrenceStartAt.toUtc().day, 28);
+    expect(store.events.last.completed, isTrue);
+    expect(store.events.last.version, 5);
   });
 
   testWidgets('signing out clears the session and returns to sign-in', (

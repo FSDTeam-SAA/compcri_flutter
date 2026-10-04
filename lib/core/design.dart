@@ -314,6 +314,8 @@ class AppField extends StatefulWidget {
     this.controller,
     this.password = false,
     this.lines = 1,
+    this.minLines,
+    this.compact = false,
     this.keyboard,
     this.validator,
     this.onTap,
@@ -325,6 +327,8 @@ class AppField extends StatefulWidget {
   final TextEditingController? controller;
   final bool password, readOnly;
   final int lines;
+  final int? minLines;
+  final bool compact;
   final TextInputType? keyboard;
   final String? Function(String?)? validator;
   final VoidCallback? onTap;
@@ -337,18 +341,19 @@ class _AppFieldState extends State<AppField> {
   bool hidden = true;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
+    padding: EdgeInsets.only(bottom: widget.compact ? 12 : 16),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (widget.label.isNotEmpty) ...[
           Text(widget.label, style: const TextStyle(fontSize: 14)),
-          const SizedBox(height: 10),
+          SizedBox(height: widget.compact ? 6 : 10),
         ],
         TextFormField(
           controller: widget.controller,
           obscureText: widget.password && hidden,
           maxLines: widget.lines,
+          minLines: widget.minLines,
           keyboardType: widget.keyboard,
           readOnly: widget.readOnly,
           onTap: widget.onTap,
@@ -362,6 +367,10 @@ class _AppFieldState extends State<AppField> {
                 },
           style: const TextStyle(fontSize: 13),
           decoration: InputDecoration(
+            isDense: widget.compact ? true : null,
+            contentPadding: widget.compact
+                ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
+                : null,
             hintText: tr(widget.hint ?? widget.label),
             suffixIcon: widget.password
                 ? IconButton(

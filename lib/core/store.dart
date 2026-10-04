@@ -27,10 +27,12 @@ class AppStore extends ChangeNotifier {
 
   AppUser? user;
   CalendarInfo? calendar;
+  CalendarInfo? primaryCalendar;
   List<CalendarInfo> calendars = const <CalendarInfo>[];
   SubscriptionInfo? subscription;
 
   bool booted = false;
+  ApiException? bootstrapError;
   bool onboarded = false;
 
   /// Set when the session expires mid-session so the shell can bounce to login.
@@ -78,6 +80,9 @@ class AppStore extends ChangeNotifier {
   /// The window currently held in [events].
   DateTime _windowFrom = DateTime.now();
   DateTime _windowTo = DateTime.now();
+  bool _eventsLoaded = false;
+  int _eventRequest = 0;
+  int _accountEpoch = 0;
 
   // --- derived views -----------------------------------------------------
 
@@ -89,19 +94,36 @@ class AppStore extends ChangeNotifier {
       sharedEvents.where((event) => event.invited).toList();
 
   List<CalendarEvent> eventsOn(DateTime day) =>
-      [...events, ...sharedEvents]
-          .where((event) => DateUtils.isSameDay(event.occurrenceStartAt, day))
+      visibleEvents
+          .where(
+            (event) =>
+                event.occurrenceStartAt.isBefore(
+                  DateTime(day.year, day.month, day.day + 1),
+                ) &&
+                event.occurrenceEndAt.isAfter(DateUtils.dateOnly(day)),
+          )
           .toList()
         ..sort((a, b) => a.occurrenceStartAt.compareTo(b.occurrenceStartAt));
 
   List<CalendarEvent> get todayEvents => eventsOn(DateTime.now());
 
+  List<CalendarEvent> get visibleEvents {
+    final rows = <String, CalendarEvent>{};
+    for (final event in [...events, ...sharedEvents]) {
+      if (event.isShared && event.rsvpStatus == 'DECLINED') continue;
+      rows.putIfAbsent(
+        '${event.id}/${event.occurrenceOriginalStartAt.toIso8601String()}',
+        () => event,
+      );
+    }
+    return rows.values.toList();
+  }
+
   List<CalendarEvent> get upcomingEvents {
     final now = DateTime.now();
     final list =
         [
-            ...events,
-            ...sharedEvents,
+            ...visibleEvents,
           ].where((event) => event.occurrenceEndAt.isAfter(now)).toList()
           ..sort((a, b) => a.occurrenceStartAt.compareTo(b.occurrenceStartAt));
     return list;
@@ -118,6 +140,8 @@ class AppStore extends ChangeNotifier {
 
   /// Restores a saved session and loads the first screen's data.
   Future<void> bootstrap() async {
+    booted = false;
+    bootstrapError = null;
     await DeviceTimeZone.resolve();
     onboarded = await api.client.store.onboarded();
     unawaited(loadLegalVersions());
@@ -125,9 +149,13 @@ class AppStore extends ChangeNotifier {
     if (session != null) {
       try {
         await loadProfile();
-      } on ApiException {
-        // A stale or rejected session drops the user back to sign-in.
-        await signOut(callServer: false);
+      } on ApiException catch (error) {
+        if (!api.client.isAuthenticated || error.status == 403) {
+          await signOut(callServer: false);
+        } else {
+          // Preserve the saved login when the network or server is unavailable.
+          bootstrapError = error;
+        }
       }
       if (isSignedIn) {
         unawaited(PushMessaging.instance.start(this));
@@ -163,15 +191,17 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<void> loadProfile() async {
+    final epoch = _accountEpoch;
     final me = await api.users.me();
+    if (epoch != _accountEpoch) return;
     user = me.user;
     _adoptLanguage();
-    calendar = me.calendar;
-    if (calendar != null) {
-      calendars = [calendar!];
-    }
+    primaryCalendar = me.calendar;
+    if (calendar == null || calendar!.isOwned) calendar = primaryCalendar;
+    if (calendars.isEmpty && primaryCalendar != null)
+      calendars = [primaryCalendar!];
     notifyListeners();
-    unawaited(_loadCalendars());
+    unawaited(refreshCalendars());
     unawaited(loadSubscription());
     unawaited(_syncCalendarTimeZone());
   }
@@ -183,14 +213,23 @@ class AppStore extends ChangeNotifier {
   /// before a move — silently schedules everything in the wrong zone. Adopt
   /// the device zone whenever it differs rather than asking anyone to pick.
   Future<void> _syncCalendarTimeZone() async {
-    final current = calendar;
+    final epoch = _accountEpoch;
+    final current = primaryCalendar;
     final device = DeviceTimeZone.current;
     if (current == null || device.isEmpty || current.timeZone == device) return;
     try {
       await api.events.updateSettings(current.id, {'timeZone': device});
       final me = await api.users.me();
-      calendar = me.calendar;
-      if (calendar != null) calendars = [calendar!];
+      if (epoch != _accountEpoch) return;
+      primaryCalendar = me.calendar;
+      if (calendar?.id == current.id) calendar = primaryCalendar;
+      calendars = [
+        for (final item in calendars)
+          if (item.id == current.id && primaryCalendar != null)
+            primaryCalendar!
+          else
+            item,
+      ];
       notifyListeners();
       await loadEvents(silent: true);
     } on ApiException {
@@ -198,21 +237,44 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadCalendars() async {
-    try {
-      final all = await api.users.calendars();
-      if (all.isEmpty) return;
-      calendars = all;
-      calendar ??= all.first;
+  Future<void> refreshCalendars() async {
+    final epoch = _accountEpoch;
+    final all = await api.users.calendars();
+    if (epoch != _accountEpoch || all.isEmpty) return;
+    final selected = calendar?.id;
+    calendars = all;
+    final active = all.where((item) => item.id == selected).firstOrNull;
+    calendar = active ?? all.first;
+    if (selected != null && calendar!.id != selected) {
+      _resetEventWindow();
       notifyListeners();
-    } on ApiException {
-      // Non-fatal: the primary calendar from /users/me is enough.
+      await loadEvents(silent: true);
+    } else {
+      notifyListeners();
     }
   }
 
+  Future<void> selectCalendar(CalendarInfo selected) async {
+    if (selected.id == calendarId) return;
+    calendar = selected;
+    _resetEventWindow();
+    notifyListeners();
+    await loadEvents(silent: true);
+  }
+
+  void _resetEventWindow() {
+    ++_eventRequest;
+    _eventsLoaded = false;
+    events = const [];
+    sharedEvents = const [];
+  }
+
   Future<void> loadSubscription() async {
+    final epoch = _accountEpoch;
     try {
-      subscription = await api.subscriptions.mine();
+      final loaded = await api.subscriptions.mine();
+      if (epoch != _accountEpoch) return;
+      subscription = loaded;
       notifyListeners();
       // The store only learns who is buying once the API has said so, which is
       // here: this is the first point at which the account's store id exists.
@@ -228,6 +290,7 @@ class AppStore extends ChangeNotifier {
   // --- authentication ----------------------------------------------------
 
   Future<void> _adopt(AuthResult result) async {
+    _clear();
     await api.client.setSession(result.session);
     user = result.user;
     _adoptLanguage();
@@ -235,7 +298,10 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
     await loadProfile();
     unawaited(PushMessaging.instance.start(this));
-    await Future.wait([loadEvents(), loadNetwork(), loadNotifications()]);
+    await Future.wait([
+      for (final load in [loadEvents, loadNetwork, loadNotifications])
+        load().catchError((Object _) {}),
+    ]);
   }
 
   Future<void> signIn(String email, String password) async =>
@@ -302,8 +368,14 @@ class AppStore extends ChangeNotifier {
   }
 
   void _clear() {
+    ++_accountEpoch;
+    bootstrapError = null;
+    loadingEvents = loadingNetwork = loadingNotifications = loadingNotes =
+        false;
     user = null;
     calendar = null;
+    primaryCalendar = null;
+    _resetEventWindow();
     calendars = const <CalendarInfo>[];
     subscription = null;
     events = const <CalendarEvent>[];
@@ -421,6 +493,8 @@ class AppStore extends ChangeNotifier {
 
   Future<void> loadEvents({DateTime? anchor, bool silent = false}) async {
     if (calendarId.isEmpty) return;
+    final selected = calendar!;
+    final request = ++_eventRequest;
     final window = monthWindow(anchor ?? DateTime.now());
     if (!silent) {
       loadingEvents = true;
@@ -429,12 +503,16 @@ class AppStore extends ChangeNotifier {
     try {
       final results = await Future.wait([
         api.events.list(
-          calendarId: calendarId,
+          calendarId: selected.id,
           from: window.from,
           to: window.to,
         ),
-        api.events.shared(from: window.from, to: window.to),
+        if (selected.isOwned)
+          api.events.shared(from: window.from, to: window.to)
+        else
+          Future.value(<CalendarEvent>[]),
       ]);
+      if (request != _eventRequest || calendarId != selected.id) return;
       events = results[0];
       sharedEvents = results[1];
       // Only a fetch that succeeded counts as loaded. Recording the window up
@@ -442,9 +520,12 @@ class AppStore extends ChangeNotifier {
       // then called the whole day free.
       _windowFrom = window.from;
       _windowTo = window.to;
+      _eventsLoaded = true;
     } finally {
-      loadingEvents = false;
-      notifyListeners();
+      if (request == _eventRequest) {
+        loadingEvents = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -452,10 +533,10 @@ class AppStore extends ChangeNotifier {
   /// Whether [day]'s events have actually been fetched, so an empty day
   /// really is free rather than unknown.
   bool hasEventsFor(DateTime day) =>
-      !day.isBefore(_windowFrom) && day.isBefore(_windowTo);
+      _eventsLoaded && !day.isBefore(_windowFrom) && day.isBefore(_windowTo);
 
   Future<void> ensureWindow(DateTime day) async {
-    if (day.isAfter(_windowFrom) && day.isBefore(_windowTo)) return;
+    if (hasEventsFor(day)) return;
     await loadEvents(anchor: day, silent: true);
   }
 
@@ -529,6 +610,7 @@ class AppStore extends ChangeNotifier {
     required DateTime endsAt,
     String? description,
     String? location,
+    List<int>? reminderMinutes,
     bool overrideConflicts = false,
   }) async {
     final result = await api.events.setRecurrenceException(
@@ -543,6 +625,7 @@ class AppStore extends ChangeNotifier {
       location: location ?? '',
       startsAt: startsAt,
       endsAt: endsAt,
+      reminderMinutes: reminderMinutes,
       overrideConflicts: overrideConflicts,
     );
     await loadEvents(anchor: startsAt, silent: true);
@@ -565,6 +648,7 @@ class AppStore extends ChangeNotifier {
   Future<void> deleteEvent(CalendarEvent event) async {
     await api.events.delete(event.id, event.version);
     events = events.where((item) => item.id != event.id).toList();
+    sharedEvents = sharedEvents.where((item) => item.id != event.id).toList();
     notifyListeners();
   }
 
@@ -626,9 +710,17 @@ class AppStore extends ChangeNotifier {
   );
 
   void _replaceEvent(CalendarEvent updated) {
-    events = events
-        .map((item) => item.id == updated.id ? updated : item)
-        .toList();
+    // Completion is stored on the series, but every expanded row keeps its
+    // own date and occurrence identity when that series state changes.
+    CalendarEvent replace(CalendarEvent item) => item.id == updated.id
+        ? item.copyWith(
+            completedAt: updated.completedAt,
+            clearCompletedAt: !updated.completed,
+            version: updated.version,
+          )
+        : item;
+    events = events.map(replace).toList();
+    sharedEvents = sharedEvents.map(replace).toList();
     notifyListeners();
   }
 
@@ -638,6 +730,7 @@ class AppStore extends ChangeNotifier {
   // --- network -----------------------------------------------------------
 
   Future<void> loadNetwork({bool silent = false}) async {
+    final epoch = _accountEpoch;
     if (!silent) {
       loadingNetwork = true;
       notifyListeners();
@@ -649,6 +742,7 @@ class AppStore extends ChangeNotifier {
         api.network.groups(),
         api.network.groupInvitations(),
       ]);
+      if (epoch != _accountEpoch) return;
       contacts = results[0] as List<Person>;
       contactRequests = results[1] as List<ContactRequest>;
       groups = results[2] as List<Group>;
@@ -723,12 +817,14 @@ class AppStore extends ChangeNotifier {
       notes.where((note) => note.eventId == eventId).toList();
 
   Future<void> loadNotes({bool silent = false}) async {
+    final epoch = _accountEpoch;
     if (!silent) {
       loadingNotes = true;
       notifyListeners();
     }
     try {
-      notes = await api.notes.list();
+      final loaded = await api.notes.list();
+      if (epoch == _accountEpoch) notes = loaded;
     } finally {
       loadingNotes = false;
       notifyListeners();
@@ -818,12 +914,14 @@ class AppStore extends ChangeNotifier {
   // --- notifications -----------------------------------------------------
 
   Future<void> loadNotifications({bool silent = false}) async {
+    final epoch = _accountEpoch;
     if (!silent) {
       loadingNotifications = true;
       notifyListeners();
     }
     try {
-      notifications = await api.notifications.list();
+      final loaded = await api.notifications.list();
+      if (epoch == _accountEpoch) notifications = loaded;
     } finally {
       loadingNotifications = false;
       notifyListeners();
@@ -865,7 +963,10 @@ class AppStore extends ChangeNotifier {
   // --- delegations (secretary access) ------------------------------------
 
   Future<void> loadDelegations() async {
-    delegations = await api.delegations.list();
+    final epoch = _accountEpoch;
+    final loaded = await api.delegations.list();
+    if (epoch != _accountEpoch) return;
+    delegations = loaded;
     notifyListeners();
   }
 
@@ -880,7 +981,10 @@ class AppStore extends ChangeNotifier {
   // --- AI ----------------------------------------------------------------
 
   Future<void> loadConversations({String? search}) async {
-    conversations = await api.ai.conversations(search: search);
+    final epoch = _accountEpoch;
+    final loaded = await api.ai.conversations(search: search);
+    if (epoch != _accountEpoch) return;
+    conversations = loaded;
     notifyListeners();
   }
 }

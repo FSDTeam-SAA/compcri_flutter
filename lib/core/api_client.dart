@@ -643,6 +643,7 @@ class ApiClient {
         ..body = jsonEncode({'refreshToken': current.refreshToken});
       final response = await _execute(request, ApiConfig.requestTimeout);
       final data = _decode(response)['data'] as Map<String, dynamic>;
+      if (_session != current) return null;
       final renewed = Session(
         accessToken: data['accessToken'] as String,
         refreshToken: data['refreshToken'] as String,
@@ -651,8 +652,10 @@ class ApiClient {
       await setSession(renewed);
       return renewed;
     } on ApiException catch (error) {
+      if (_session != current) return null;
       // A network blip should not sign the user out; a rejected token should.
-      if (error.isNetworkError) return null;
+      if (error.isNetworkError || error.status >= 500 || error.status == 429)
+        rethrow;
       await clearSession();
       onUnauthorized?.call();
       return null;

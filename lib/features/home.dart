@@ -40,6 +40,7 @@ class HomeTab extends StatelessWidget {
       onRefresh: () async {
         try {
           await Future.wait([
+            store.refreshCalendars(),
             store.loadEvents(silent: true),
             store.loadNotifications(silent: true),
             store.loadNotes(silent: true),
@@ -218,6 +219,21 @@ class HomeTab extends StatelessWidget {
           ),
           if (store.loadingEvents && today.isEmpty)
             const LoadingBlock()
+          else if (!store.hasEventsFor(now))
+            _HomeCard(
+              child: Column(
+                children: [
+                  const Text('Could not load events.'),
+                  TextButton(
+                    onPressed: () => runAction(
+                      context,
+                      () => store.loadEvents(silent: true),
+                    ),
+                    child: const Text('Try Again'),
+                  ),
+                ],
+              ),
+            )
           else if (today.isEmpty)
             _HomeCard(
               child: Padding(

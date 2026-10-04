@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart' hide Text;
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:image_picker/image_picker.dart';
 
 import '../core/api.dart';
@@ -12,6 +13,7 @@ import '../core/time.dart';
 import 'conflicts.dart';
 import 'notes.dart';
 import 'past_time.dart';
+import 'reminder_picker.dart';
 import 'poster.dart';
 import 'time_picker.dart';
 import '../core/i18n.dart';
@@ -107,7 +109,7 @@ class EventTile extends StatelessWidget {
                           color: AppPalette.of(context).accent,
                         ),
                       )
-                    else
+                    else if (event.canEdit || event.canDelete)
                       PopupMenuButton<String>(
                         icon: const Icon(Icons.more_vert, size: 19),
                         onSelected: (value) async {
@@ -117,6 +119,48 @@ class EventTile extends StatelessWidget {
                             return;
                           }
                           if (!context.mounted) return;
+                          if (event.isRecurring) {
+                            final scope = await showDialog<_EditScope>(
+                              context: context,
+                              builder: (dialogContext) => AlertDialog(
+                                title: const Text('Delete repeating event'),
+                                content: const Text('Remove which events?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(dialogContext),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(
+                                      dialogContext,
+                                      _EditScope.occurrence,
+                                    ),
+                                    child: const Text('This event'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(
+                                      dialogContext,
+                                      _EditScope.series,
+                                    ),
+                                    child: const Text('All events'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (scope == null || !context.mounted) return;
+                            final done = await runAction(
+                              context,
+                              () => scope == _EditScope.occurrence
+                                  ? store.cancelOccurrence(event)
+                                  : store.deleteEvent(event),
+                              success: scope == _EditScope.occurrence
+                                  ? 'Occurrence removed'
+                                  : 'Series deleted',
+                            );
+                            if (done) onChanged?.call();
+                            return;
+                          }
                           final confirmed = await confirm(
                             context,
                             'Delete event?',
@@ -133,14 +177,16 @@ class EventTile extends StatelessWidget {
                           if (done) onChanged?.call();
                         },
                         itemBuilder: (_) => [
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Text('Edit'),
-                          ),
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete'),
-                          ),
+                          if (event.canEdit)
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Text('Edit'),
+                            ),
+                          if (event.canDelete)
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Text('Delete'),
+                            ),
                         ],
                       ),
                   ],
@@ -207,7 +253,8 @@ class _EventFormState extends State<EventForm> {
   // to be reminded about simply passed in silence, which reads as push being
   // broken rather than as a field they never opened. Editing an existing event
   // still loads whatever it was saved with.
-  String reminder = 'At event time', repeat = 'Never';
+  List<int> reminderMinutes = const [0];
+  String repeat = 'Never';
 
   /// Newly uploaded poster id, or the existing one when unchanged.
   String? posterMediaId;
@@ -249,7 +296,7 @@ class _EventFormState extends State<EventForm> {
       date = event.date;
       start = event.start;
       end = event.end;
-      reminder = event.reminder;
+      reminderMinutes = List<int>.of(event.reminderMinutes);
       repeat = event.repeat;
       posterUrl = event.poster?.secureUrl;
       posterAspect = event.poster?.aspectRatio;
@@ -283,6 +330,10 @@ class _EventFormState extends State<EventForm> {
   /// 23:59 used to shorten late events, and comparing bare clock times reset
   /// the end of any overnight event whenever its date changed.)
   void _changeTime(VoidCallback change) {
+    // Invalidate a request immediately, before the debounce starts the next
+    // one, so a late answer for the previous time cannot authorize this save.
+    ++_conflictCheck;
+    conflictReport = null;
     final (startsBefore, endsBefore) = _range();
     final length = endsBefore.difference(startsBefore);
     final startBefore = start, endBefore = end;
@@ -334,6 +385,54 @@ class _EventFormState extends State<EventForm> {
     if (picked != null && mounted) _changeTime(() => end = picked);
   }
 
+  Future<void> _pickReminder() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final picked = await showReminderPicker(
+      context,
+      startsAt: _range().$1,
+      initial: reminderMinutes,
+    );
+    if (picked != null && mounted) setState(() => reminderMinutes = picked);
+  }
+
+  Future<void> _pickRepeat() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppPalette.of(context).surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                'Repeat event',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+              ),
+            ),
+            for (final choice in {...CalendarEvent.repeatOptions, repeat})
+              ListTile(
+                title: Text(choice),
+                trailing: choice == repeat
+                    ? Icon(
+                        Icons.check,
+                        color: AppPalette.of(sheetContext).accent,
+                      )
+                    : null,
+                onTap: () => Navigator.pop(sheetContext, choice),
+              ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && mounted) setState(() => repeat = picked);
+  }
+
   void _applySlot(TimeSlot slot) => _changeTime(() {
     date = DateUtils.dateOnly(slot.startsAt);
     start = TimeOfDay.fromDateTime(slot.startsAt);
@@ -344,14 +443,15 @@ class _EventFormState extends State<EventForm> {
   /// the picked time runs into. Offline, the events already loaded stand in.
   Future<void> _checkConflicts() async {
     final store = StoreScope.read(context);
-    if (store.calendarId.isEmpty) return;
+    final calendarId = widget.event?.calendarId ?? store.calendarId;
+    if (calendarId.isEmpty) return;
     final check = ++_conflictCheck;
     final (startsAt, endsAt) = _range();
     setState(() => checkingConflicts = true);
     ConflictReport report;
     try {
       report = await store.api.events.checkConflicts(
-        calendarId: store.calendarId,
+        calendarId: calendarId,
         startsAt: startsAt,
         endsAt: endsAt,
         excludeEventId: widget.event?.id,
@@ -474,21 +574,35 @@ class _EventFormState extends State<EventForm> {
     }
   }
 
+  bool get _seriesSettingsChanged {
+    final event = widget.event;
+    return event != null &&
+        (repeat != event.repeat ||
+            posterCleared ||
+            posterMediaId != event.poster?.id);
+  }
+
   Future<_EditScope?> _askEditScope() => showDialog<_EditScope>(
     context: context,
     builder: (dialogContext) => AlertDialog(
       backgroundColor: AppPalette.of(dialogContext).surface,
       title: const Text('Repeating event'),
-      content: const Text('Apply your changes to which events?'),
+      content: Text(
+        _seriesSettingsChanged
+            ? 'Repeat and image changes apply to all events in the series.'
+            : 'Apply your changes to which events?',
+      ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext),
           child: const Text('Cancel'),
         ),
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext, _EditScope.occurrence),
-          child: const Text('This event'),
-        ),
+        if (!_seriesSettingsChanged)
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, _EditScope.occurrence),
+            child: const Text('This event'),
+          ),
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, _EditScope.series),
           child: const Text('All events'),
@@ -515,9 +629,7 @@ class _EventFormState extends State<EventForm> {
               location: location.text.trim(),
               posterMediaId: posterMediaId,
               recurrenceRrule: CalendarEvent.rruleForLabel(repeat),
-              reminderMinutes: savingPast
-                  ? const <int>[]
-                  : CalendarEvent.minutesForLabel(reminder),
+              reminderMinutes: savingPast ? const <int>[] : reminderMinutes,
               overrideConflicts: overrideConflicts,
               groupId: widget.groupId,
             )
@@ -529,6 +641,11 @@ class _EventFormState extends State<EventForm> {
               endsAt: endsAt,
               description: description.text.trim(),
               location: location.text.trim(),
+              reminderMinutes: savingPast
+                  ? const <int>[]
+                  : listEquals(reminderMinutes, event.reminderMinutes)
+                  ? null
+                  : reminderMinutes,
               overrideConflicts: overrideConflicts,
             )
           : store.updateEvent(
@@ -539,12 +656,10 @@ class _EventFormState extends State<EventForm> {
               description: description.text.trim(),
               location: location.text.trim(),
               posterMediaId: posterCleared ? null : posterMediaId,
-              recurrenceRrule: CalendarEvent.rruleForLabel(repeat),
-              reminderMinutes: savingPast
-                  ? const <int>[]
-                  : reminder == event.reminder
-                  ? event.reminderMinutes
-                  : CalendarEvent.minutesForLabel(reminder),
+              recurrenceRrule: repeat == event.repeat
+                  ? event.recurrenceRrule
+                  : CalendarEvent.rruleForLabel(repeat),
+              reminderMinutes: savingPast ? const <int>[] : reminderMinutes,
               overrideConflicts: overrideConflicts,
             ),
       success: event == null
@@ -578,17 +693,22 @@ class _EventFormState extends State<EventForm> {
     IconData icon,
     VoidCallback onTap,
   ) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
+    padding: const EdgeInsets.only(bottom: 12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label),
-        const SizedBox(height: 10),
+        const SizedBox(height: 6),
         InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(9),
           child: InputDecorator(
             decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 12,
+              ),
               suffixIcon: Icon(
                 icon,
                 color: AppPalette.of(context).accent,
@@ -598,7 +718,7 @@ class _EventFormState extends State<EventForm> {
             child: Text(
               value,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 14,
                 color: AppPalette.of(context).muted,
               ),
             ),
@@ -614,13 +734,28 @@ class _EventFormState extends State<EventForm> {
         !posterCleared && (posterUrl != null || posterMediaId != null);
     return PageFrame(
       title: widget.event == null ? 'Create Event' : 'Edit Event',
+      actions: [
+        if (!hasPoster)
+          IconButton(
+            key: const ValueKey('poster-add'),
+            tooltip: tr('Add event image'),
+            onPressed: _choosePoster,
+            icon: Icon(
+              Icons.add_photo_alternate_outlined,
+              color: AppPalette.of(context).accent,
+            ),
+          ),
+      ],
+      bottom: AsyncButton(
+        widget.event == null ? 'Create Event' : 'Save Changes',
+        onPressed: save,
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
       child: Form(
         key: form,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Flyer / Event Poster'),
-            const SizedBox(height: 10),
             if (hasPoster && (posterUrl != null || posterPath != null)) ...[
               PosterImage(
                 image: posterUrl != null
@@ -660,44 +795,12 @@ class _EventFormState extends State<EventForm> {
                   ),
                 ],
               ),
-            ] else
-              InkWell(
-                key: const ValueKey('poster-add'),
-                onTap: _choosePoster,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  height: 110,
-                  decoration: BoxDecoration(
-                    color: AppPalette.of(context).surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppPalette.of(context).accent,
-                      width: .8,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.add_photo_alternate_outlined,
-                        color: AppPalette.of(context).accent,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'JPG, PNG or WEBP · tap to browse',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppPalette.of(context).muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 12),
+            ],
             AppField(
-              'Title',
+              'Event title',
               hint: 'Add a title',
+              compact: true,
               controller: title,
               validator: (v) =>
                   v == null || v.trim().isEmpty ? 'Enter an event title' : null,
@@ -718,57 +821,40 @@ class _EventFormState extends State<EventForm> {
               onStart: _pickStart,
               onEnd: _pickEnd,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             ConflictPanel(
               checking: checkingConflicts,
               report: conflictReport,
               onPick: _applySlot,
               onChangeTime: _pickStart,
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: SelectField(
-                    'Reminder',
-                    value: reminder,
-                    values: {
-                      ...CalendarEvent.reminderOptions,
-                      reminder,
-                    }.toList(),
-                    onChanged: (v) => setState(() => reminder = v),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: SelectField(
-                    'Repeat',
-                    value: repeat,
-                    values: CalendarEvent.repeatOptions,
-                    onChanged: (v) => setState(() => repeat = v),
-                  ),
-                ),
-              ],
+            _EventOptionRow(
+              key: const ValueKey('event-reminder'),
+              icon: Icons.notifications_none_rounded,
+              label: 'Remind me',
+              value: reminderChoiceLabel(reminderMinutes),
+              onTap: _pickReminder,
             ),
-            const SizedBox(height: 8),
-            Text(
-              reminder == 'None'
-                  ? 'Reminders are off for this event.'
-                  : 'Event-time notification is included. Choose an advance reminder for an extra notification before the event.',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppPalette.of(context).muted,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 5, 4, 12),
+              child: Text(
+                reminderAlerts(reminderMinutes, _range().$1),
+                key: const ValueKey('event-reminder-alerts'),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppPalette.of(context).muted,
+                ),
               ),
             ),
-            if (reminder != 'None' &&
-                CalendarEvent.minutesForLabel(reminder).any(
-                  (minutes) =>
-                      minutes > 0 &&
-                      !_range().$1
-                          .subtract(Duration(minutes: minutes))
-                          .isAfter(DateTime.now()),
-                ))
+            if (reminderMinutes.any(
+              (minutes) =>
+                  minutes > 0 &&
+                  !_range().$1
+                      .subtract(Duration(minutes: minutes))
+                      .isAfter(DateTime.now()),
+            ))
               Padding(
-                padding: const EdgeInsets.only(top: 6),
+                padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
                   'The advance reminder time has passed. You will still be notified when the event starts.',
                   style: TextStyle(
@@ -777,16 +863,36 @@ class _EventFormState extends State<EventForm> {
                   ),
                 ),
               ),
-            AppField('Location', hint: 'Add a location', controller: location),
+            _EventOptionRow(
+              key: const ValueKey('event-repeat'),
+              icon: Icons.repeat_rounded,
+              label: 'Repeat event',
+              value: tr(repeat),
+              onTap: _pickRepeat,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 5, 4, 12),
+              child: Text(
+                'How often this event repeats.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppPalette.of(context).muted,
+                ),
+              ),
+            ),
+            AppField(
+              'Location',
+              hint: 'Add a location',
+              controller: location,
+              compact: true,
+            ),
             AppField(
               'Description',
               hint: 'Add notes about your event...',
               controller: description,
-              lines: 3,
-            ),
-            AsyncButton(
-              widget.event == null ? 'Create Event' : 'Save Changes',
-              onPressed: save,
+              compact: true,
+              lines: 4,
+              minLines: 1,
             ),
           ],
         ),
@@ -839,16 +945,35 @@ class _EventDetailsState extends State<EventDetails> {
   CalendarEvent _mergeOccurrence(CalendarEvent fresh, AppStore store) {
     if (!fresh.isRecurring) return fresh;
     final slot = event.occurrenceOriginalStartAt;
-    final expanded = store.events.where(
-      (item) =>
-          item.id == fresh.id &&
-          item.occurrenceOriginalStartAt.isAtSameMomentAs(slot),
-    );
-    final row = expanded.isEmpty ? null : expanded.first;
+    final rows = [
+      ...store.events,
+      ...store.sharedEvents,
+    ].where((item) => item.id == fresh.id);
+    // Changing the time of the whole series (9:00 → 9:30) moves every slot,
+    // so the one this screen was opened with no longer exists. Keeping it sent
+    // the server a date the series no longer has, and every edit of "this
+    // event" was refused (422 INVALID_OCCURRENCE). Follow the occurrence the
+    // series now generates on the same day instead.
+    final row =
+        rows
+            .where(
+              (item) => item.occurrenceOriginalStartAt.isAtSameMomentAs(slot),
+            )
+            .firstOrNull ??
+        rows
+            .where(
+              (item) =>
+                  DateUtils.isSameDay(item.occurrenceOriginalStartAt, slot),
+            )
+            .firstOrNull;
     return fresh.copyWith(
+      title: row?.title ?? event.title,
+      description: row?.description ?? event.description,
+      location: row?.location ?? event.location,
+      reminderMinutes: row?.reminderMinutes ?? event.reminderMinutes,
       occurrenceStartAt: row?.occurrenceStartAt ?? event.occurrenceStartAt,
       occurrenceEndAt: row?.occurrenceEndAt ?? event.occurrenceEndAt,
-      occurrenceOriginalStartAt: slot,
+      occurrenceOriginalStartAt: row?.occurrenceOriginalStartAt ?? slot,
     );
   }
 
@@ -1000,7 +1125,9 @@ class _EventDetailsState extends State<EventDetails> {
                     'Share Event',
                     outline: true,
                     icon: Icons.share_outlined,
-                    onPressed: () => go(context, '/event/share', event),
+                    onPressed: event.canShare
+                        ? () => go(context, '/event/share', event)
+                        : null,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1014,6 +1141,8 @@ class _EventDetailsState extends State<EventDetails> {
                 ),
               ],
             ),
+          ],
+          if (event.canEdit) ...[
             const SizedBox(height: 14),
             PrimaryButton(
               'Edit Event',
@@ -1437,6 +1566,90 @@ class _EventNotesState extends State<_EventNotes> {
 
 /// Start and end side by side with the length between them, so the whole
 /// span reads at a glance before saving.
+class _EventOptionRow extends StatelessWidget {
+  const _EventOptionRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label, value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+    return Material(
+      color: palette.surface.withValues(alpha: .84),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: palette.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              Icon(icon, color: palette.accent, size: 23),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 155),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: palette.wash(const Color(0xfff1ebff)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          value,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: palette.accent,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.keyboard_arrow_down,
+                        color: palette.accent,
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _TimesCard extends StatelessWidget {
   const _TimesCard({
     required this.start,
@@ -1456,7 +1669,7 @@ class _TimesCard extends StatelessWidget {
     final overnight = !DateUtils.isSameDay(startsAt, endsAt);
     Widget row(String label, TimeOfDay time, VoidCallback onTap, Key key) =>
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 6),
           child: Row(
             children: [
               Expanded(
@@ -1470,10 +1683,10 @@ class _TimesCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   onTap: onTap,
                   child: Container(
-                    width: 150,
+                    width: 132,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 11,
+                      horizontal: 12,
+                      vertical: 8,
                     ),
                     child: Row(
                       children: [
@@ -1500,7 +1713,7 @@ class _TimesCard extends StatelessWidget {
           ),
         );
     return Surface(
-      padding: const EdgeInsets.fromLTRB(16, 6, 12, 12),
+      padding: const EdgeInsets.fromLTRB(14, 4, 12, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1508,7 +1721,7 @@ class _TimesCard extends StatelessWidget {
           Divider(height: 1, color: AppPalette.of(context).border),
           row(tr('Ends'), end, onEnd, const ValueKey('event-end')),
           Divider(height: 1, color: AppPalette.of(context).border),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             [
               tr('Duration: {length}', {

@@ -48,6 +48,34 @@ void main() {
       expect(event.startsAt.toUtc().day, 1);
     });
 
+    test('recovers a moved occurrence identity from an older API response', () {
+      final event = CalendarEvent.fromJson({
+        '_id': 'daily',
+        'startsAt': '2026-10-03T13:30:00.000Z',
+        'endsAt': '2026-10-03T14:30:00.000Z',
+        'occurrenceStartAt': '2026-10-03T13:30:00.000Z',
+        'occurrenceEndAt': '2026-10-03T14:30:00.000Z',
+        'recurrenceRrule': 'FREQ=DAILY',
+        'recurrenceExceptions': [
+          {
+            'originalStartAt': '2026-10-03T12:00:00.000Z',
+            'overrides': {
+              'startsAt': '2026-10-03T13:30:00.000Z',
+              'endsAt': '2026-10-03T14:30:00.000Z',
+            },
+          },
+        ],
+      });
+      expect(
+        event.occurrenceOriginalStartAt.toUtc(),
+        DateTime.utc(2026, 10, 3, 12),
+      );
+      expect(
+        event.copyWith(version: 2).occurrenceOriginalStartAt,
+        event.occurrenceOriginalStartAt,
+      );
+    });
+
     test('treats a pending shared event as an invitation', () {
       final event = CalendarEvent.fromJson({
         '_id': '65b1f77bcf86cd7994390103',

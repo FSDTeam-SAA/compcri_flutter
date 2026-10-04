@@ -15,6 +15,29 @@ DateTime? _date(dynamic value) =>
 String _string(dynamic value, [String fallback = '']) =>
     value == null ? fallback : '$value';
 
+DateTime _occurrenceIdentity(Map<String, dynamic> json, DateTime start) {
+  final explicit = _date(json['occurrenceOriginalStartAt']);
+  if (explicit != null) return explicit;
+  // Older servers return the moved time without an explicit occurrence id,
+  // but still include the exception that records its untouched slot.
+  final exceptions = json['recurrenceExceptions'];
+  if (exceptions is List) {
+    final matches = <DateTime>[];
+    for (final exception in exceptions) {
+      if (exception is! Map || exception['cancelled'] == true) continue;
+      final overrides = exception['overrides'];
+      if (overrides is! Map) continue;
+      final moved = _date(overrides['startsAt']);
+      final original = _date(exception['originalStartAt']);
+      if (original != null && moved != null && moved.isAtSameMomentAs(start)) {
+        matches.add(original);
+      }
+    }
+    if (matches.length == 1) return matches.single;
+  }
+  return start;
+}
+
 List<String> _strings(dynamic value) =>
     value is List ? value.map((item) => '$item').toList() : const <String>[];
 
@@ -264,6 +287,8 @@ class CalendarInfo {
   final CalendarAvailability availability;
 
   bool get isOwned => preset == 'OWNER';
+  bool get canCreate =>
+      const ['OWNER', 'ADD_ONLY', 'ADD_EDIT', 'FULL_ACCESS'].contains(preset);
 
   factory CalendarInfo.fromJson(
     Map<String, dynamic> json, {
@@ -313,6 +338,7 @@ class CalendarEvent {
     this.canEdit = true,
     this.canDelete = true,
     this.canRespond = false,
+    this.canShare = true,
   }) : occurrenceStartAt = occurrenceStartAt ?? startsAt,
        occurrenceEndAt = occurrenceEndAt ?? endsAt,
        occurrenceOriginalStartAt =
@@ -342,7 +368,7 @@ class CalendarEvent {
   final int version;
 
   final String? sharePermission, shareSource, rsvpStatus;
-  final bool canEdit, canDelete, canRespond;
+  final bool canEdit, canDelete, canRespond, canShare;
 
   bool get completed => completedAt != null;
   bool get hasPoster => poster != null;
@@ -354,7 +380,7 @@ class CalendarEvent {
 
   /// Shared events awaiting a response drive the invitation UI.
   bool get invited =>
-      isShared && (rsvpStatus == null || rsvpStatus == 'PENDING');
+      isShared && canRespond && (rsvpStatus == null || rsvpStatus == 'PENDING');
 
   // --- view helpers ------------------------------------------------------
 
@@ -384,7 +410,12 @@ class CalendarEvent {
     final startsAt = _date(json['startsAt']) ?? DateTime.now();
     final endsAt =
         _date(json['endsAt']) ?? startsAt.add(const Duration(hours: 1));
+    final occurrenceStartAt = _date(json['occurrenceStartAt']) ?? startsAt;
     final reminders = json['reminderMinutes'];
+    permissions ??= json['permissions'] is Map
+        ? (json['permissions'] as Map).cast<String, dynamic>()
+        : null;
+    final sharedPermission = json['sharePermission'];
     return CalendarEvent(
       id: _string(json['_id']),
       calendarId: _string(_id(json['calendarId'])),
@@ -395,9 +426,9 @@ class CalendarEvent {
       timeZone: _string(json['timeZone'], 'UTC'),
       startsAt: startsAt,
       endsAt: endsAt,
-      occurrenceStartAt: _date(json['occurrenceStartAt']) ?? startsAt,
+      occurrenceStartAt: occurrenceStartAt,
       occurrenceEndAt: _date(json['occurrenceEndAt']) ?? endsAt,
-      occurrenceOriginalStartAt: _date(json['occurrenceOriginalStartAt']),
+      occurrenceOriginalStartAt: _occurrenceIdentity(json, occurrenceStartAt),
       reminderMinutes: reminders is List
           ? reminders.map((value) => (value as num).toInt()).toList()
           : const <int>[0],
@@ -409,13 +440,22 @@ class CalendarEvent {
       sharePermission: json['sharePermission'] as String?,
       shareSource: json['shareSource'] as String?,
       rsvpStatus: json['rsvpStatus'] as String?,
-      canEdit: permissions?['edit'] as bool? ?? true,
-      canDelete: permissions?['delete'] as bool? ?? true,
-      canRespond: permissions?['respond'] as bool? ?? false,
+      canEdit:
+          permissions?['edit'] as bool? ??
+          (sharedPermission == null || sharedPermission == 'EDIT'),
+      canDelete: permissions?['delete'] as bool? ?? sharedPermission == null,
+      canRespond:
+          permissions?['respond'] as bool? ??
+          const ['RESPOND', 'EDIT'].contains(sharedPermission),
+      canShare: permissions?['share'] as bool? ?? sharedPermission == null,
     );
   }
 
   CalendarEvent copyWith({
+    String? title,
+    String? description,
+    String? location,
+    List<int>? reminderMinutes,
     DateTime? completedAt,
     bool clearCompletedAt = false,
     String? rsvpStatus,
@@ -427,9 +467,9 @@ class CalendarEvent {
     id: id,
     calendarId: calendarId,
     createdById: createdById,
-    title: title,
-    description: description,
-    location: location,
+    title: title ?? this.title,
+    description: description ?? this.description,
+    location: location ?? this.location,
     timeZone: timeZone,
     startsAt: startsAt,
     endsAt: endsAt,
@@ -437,7 +477,7 @@ class CalendarEvent {
     occurrenceEndAt: occurrenceEndAt ?? this.occurrenceEndAt,
     occurrenceOriginalStartAt:
         occurrenceOriginalStartAt ?? this.occurrenceOriginalStartAt,
-    reminderMinutes: reminderMinutes,
+    reminderMinutes: reminderMinutes ?? this.reminderMinutes,
     recurrenceRrule: recurrenceRrule,
     poster: poster,
     groupId: groupId,
@@ -449,6 +489,7 @@ class CalendarEvent {
     canEdit: canEdit,
     canDelete: canDelete,
     canRespond: canRespond,
+    canShare: canShare,
   );
 
   // --- label mapping -----------------------------------------------------

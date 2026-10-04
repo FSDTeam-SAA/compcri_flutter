@@ -1549,6 +1549,14 @@ class _AssistantFormState extends State<AssistantForm> {
   String? existingUserId;
   bool lookedUp = false;
 
+  void _emailChanged() {
+    if (!lookedUp && existingUserId == null) return;
+    setState(() {
+      lookedUp = false;
+      existingUserId = null;
+    });
+  }
+
   bool get editing => widget.delegation != null;
 
   @override
@@ -1560,6 +1568,7 @@ class _AssistantFormState extends State<AssistantForm> {
       email.text = delegation.person.email;
       permission = delegation.presetIndex;
     }
+    if (!editing) email.addListener(_emailChanged);
   }
 
   @override
@@ -1578,11 +1587,15 @@ class _AssistantFormState extends State<AssistantForm> {
       return;
     }
     final store = StoreScope.read(context);
+    final checkedEmail = email.text.trim().toLowerCase();
     final result = await runTask<Map<String, dynamic>>(
       context,
-      () => store.api.delegations.lookup(email.text.trim()),
+      () => store.api.delegations.lookup(checkedEmail),
     );
-    if (result == null || !mounted) return;
+    if (result == null ||
+        !mounted ||
+        email.text.trim().toLowerCase() != checkedEmail)
+      return;
     final exists = result['exists'] == true;
     final user = result['user'];
     setState(() {
@@ -1601,6 +1614,10 @@ class _AssistantFormState extends State<AssistantForm> {
   }
 
   Future<void> _submit() async {
+    if (!editing && !lookedUp) {
+      await _lookup();
+      if (!mounted || !lookedUp) return;
+    }
     if (!form.currentState!.validate()) return;
     final store = StoreScope.read(context);
     final preset = Delegation.presets[permission];

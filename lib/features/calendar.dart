@@ -132,6 +132,10 @@ class _CalendarTabState extends State<CalendarTab> {
   /// Opens the form on [minute] of the selected day — or, with none given,
   /// at 9:00, or the next full hour when the day is today and 9:00 has gone.
   Future<void> create([int? minute]) async {
+    if (StoreScope.read(context).calendar?.canCreate != true) {
+      toast(context, 'Creating events is not permitted');
+      return;
+    }
     final now = DateTime.now();
     final DateTime initial;
     if (minute != null) {
@@ -171,7 +175,7 @@ class _CalendarTabState extends State<CalendarTab> {
 
   List<CalendarEvent> eventsFor(AppStore store, DateTime day) {
     final end = DateTime(day.year, day.month, day.day + 1);
-    return [...store.events, ...store.sharedEvents]
+    return store.visibleEvents
         .where(
           (event) =>
               event.occurrenceStartAt.isBefore(end) &&
@@ -543,11 +547,12 @@ class _CalendarTabState extends State<CalendarTab> {
               ],
             ),
           ),
-          Positioned(
-            right: 24,
-            bottom: 16,
-            child: CreateEventButton(onPressed: create),
-          ),
+          if (store.calendar?.canCreate == true)
+            Positioned(
+              right: 24,
+              bottom: 16,
+              child: CreateEventButton(onPressed: create),
+            ),
         ],
       ),
     );

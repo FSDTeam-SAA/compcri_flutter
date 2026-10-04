@@ -24,7 +24,7 @@ class _SplashScreenState extends State<SplashScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final store = StoreScope.of(context);
-    if (!store.booted || routed) return;
+    if (!store.booted || routed || store.bootstrapError != null) return;
     routed = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -55,10 +55,30 @@ class _SplashScreenState extends State<SplashScreen> {
             filterQuality: FilterQuality.medium,
           ),
           // A session restore slow enough to outlast the splash shows this.
-          const Positioned(
-            bottom: 96,
-            child: _DelayedSpinner(delay: Duration(milliseconds: 1200)),
-          ),
+          if (StoreScope.of(context).bootstrapError != null)
+            Positioned(
+              bottom: 64,
+              left: 24,
+              right: 24,
+              child: Column(
+                children: [
+                  const Text(
+                    'Could not connect. Your saved sign-in is safe.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  AsyncButton(
+                    'Try Again',
+                    onPressed: () => StoreScope.read(context).bootstrap(),
+                  ),
+                ],
+              ),
+            )
+          else
+            const Positioned(
+              bottom: 96,
+              child: _DelayedSpinner(delay: Duration(milliseconds: 1200)),
+            ),
         ],
       ),
     ),

@@ -16,6 +16,7 @@ import '../core/markdown.dart';
 import '../core/store.dart';
 import '../core/time.dart';
 import 'calendar.dart';
+import 'calendar_switcher.dart';
 import 'conflicts.dart';
 export 'calendar.dart' show CalendarTab;
 import 'network.dart';
@@ -33,7 +34,7 @@ class Dashboard extends StatefulWidget {
 }
 
 class _DashboardState extends State<Dashboard>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   int tab = 0;
   late final AnimationController reveal = AnimationController(
     vsync: this,
@@ -44,25 +45,45 @@ class _DashboardState extends State<Dashboard>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final store = StoreScope.read(context);
       // A resumed session already has data; a fresh sign-in does not.
-      if (store.events.isEmpty) store.loadEvents(silent: true);
-      if (store.notifications.isEmpty) store.loadNotifications(silent: true);
-      if (store.contacts.isEmpty) store.loadNetwork(silent: true);
-      if (store.notes.isEmpty) store.loadNotes(silent: true);
+      if (store.events.isEmpty)
+        store.loadEvents(silent: true).catchError((Object _) {});
+      if (store.notifications.isEmpty)
+        store.loadNotifications(silent: true).catchError((Object _) {});
+      if (store.contacts.isEmpty)
+        store.loadNetwork(silent: true).catchError((Object _) {});
+      if (store.notes.isEmpty)
+        store.loadNotes(silent: true).catchError((Object _) {});
     });
   }
 
   void selectTab(int value) {
     if (value == tab) return;
     setState(() => tab = value);
+    if (value == 0)
+      StoreScope.read(
+        context,
+      ).ensureWindow(DateTime.now()).catchError((Object _) {});
     if (!MediaQuery.disableAnimationsOf(context)) reveal.forward(from: 0);
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      final store = StoreScope.read(context);
+      store.refreshCalendars().catchError((Object _) {});
+      store.loadNetwork(silent: true).catchError((Object _) {});
+      store.loadEvents(silent: true).catchError((Object _) {});
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     reveal.dispose();
     super.dispose();
   }
@@ -71,28 +92,40 @@ class _DashboardState extends State<Dashboard>
   Widget build(BuildContext context) => Backdrop(
     child: Scaffold(
       body: SafeArea(
-        child: FadeTransition(
-          opacity: reveal,
-          child: IndexedStack(
-            index: tab,
-            children: [
-              HomeTab(
-                onCalendar: () => selectTab(2),
-                onVoice: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(builder: (_) => const VoiceScreen()),
+        child: Column(
+          children: [
+            const CalendarSwitcher(),
+            Expanded(
+              child: FadeTransition(
+                opacity: reveal,
+                child: IndexedStack(
+                  index: tab,
+                  children: [
+                    HomeTab(
+                      onCalendar: () => selectTab(2),
+                      onVoice: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const VoiceScreen(),
+                        ),
+                      ),
+                    ),
+                    const ChatTab(),
+                    const CalendarTab(),
+                    const NetworkTab(),
+                  ],
                 ),
               ),
-              const ChatTab(),
-              const CalendarTab(),
-              const NetworkTab(),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
       // Calendar has its own add affordance, and Chat's "New chat" button
       // sits exactly where the FAB would land.
-      floatingActionButton: tab == 1 || tab == 2
+      floatingActionButton:
+          tab == 1 ||
+              tab == 2 ||
+              StoreScope.of(context).calendar?.canCreate != true
           ? null
           : CreateEventButton(
               onPressed: () async {
@@ -121,7 +154,8 @@ class _ChatTabState extends State<ChatTab> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) StoreScope.read(context).loadConversations();
+      if (mounted)
+        StoreScope.read(context).loadConversations().catchError((Object _) {});
     });
   }
 

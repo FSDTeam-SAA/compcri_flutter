@@ -73,7 +73,14 @@ void main() {
     // Tapping a day carries the selection into the other views, so switching
     // lands where the user was looking rather than back on today.
     final target = today.day == 1 ? 2 : 1;
-    await tester.tap(find.text('$target').first);
+    // The date strip also contains this number, including off-screen cells.
+    // Select the visible cell in the month grid.
+    final cell = find.descendant(
+      of: find.byType(GridView),
+      matching: find.text('$target'),
+    );
+    await tester.ensureVisible(cell);
+    await tester.tap(cell);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Agenda'));
     await tester.pumpAndSettle();
@@ -189,9 +196,6 @@ void main() {
     final backend = FakeBackend()..failEvents = true;
     await pumpCalendar(tester, backend);
 
-    debugPrint(
-      'DBG ${find.byType(RichText).evaluate().map((e) => (e.widget as RichText).text.toPlainText()).toList()}',
-    );
     expect(find.byKey(const ValueKey('calendar-retry')), findsOneWidget);
     expect(find.textContaining('free · tap to add'), findsNothing);
 

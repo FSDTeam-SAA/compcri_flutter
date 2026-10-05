@@ -928,6 +928,49 @@ class AppStore extends ChangeNotifier {
     }
   }
 
+  /// The event a notification is about, as the occurrence it names when it
+  /// names one. A reminder for a repeating event otherwise opened the first
+  /// date of the series instead of the day it was reminding about.
+  Future<CalendarEvent?> eventForNotification(
+    Map<String, dynamic>? data,
+  ) async {
+    final eventId = data?['eventId']?.toString();
+    if (eventId == null || eventId.isEmpty) return null;
+    // Local time, as every event row is: a UTC value would show its UTC hours.
+    final startsAt = DateTime.tryParse(
+      '${data?['occurrenceStartAt'] ?? ''}',
+    )?.toLocal();
+    if (startsAt != null) {
+      final loaded = [...events, ...sharedEvents].where(
+        (item) =>
+            item.id == eventId &&
+            item.occurrenceStartAt.isAtSameMomentAs(startsAt),
+      );
+      if (loaded.isNotEmpty) return loaded.first;
+    }
+    final fresh = await api.events.get(eventId);
+    if (startsAt == null || !fresh.isRecurring) return fresh;
+    final slot =
+        DateTime.tryParse(
+          '${data?['occurrenceOriginalStartAt'] ?? ''}',
+        )?.toLocal() ??
+        startsAt;
+    return fresh.copyWith(
+      occurrenceStartAt: startsAt,
+      occurrenceEndAt: startsAt.add(fresh.endsAt.difference(fresh.startsAt)),
+      occurrenceOriginalStartAt: slot,
+    );
+  }
+
+  /// Marks the notification [id] read, for a tap on a push that never
+  /// passed through the in-app list.
+  Future<void> markNotificationIdRead(String id) async {
+    final item = notifications.where((item) => item.id == id).firstOrNull;
+    if (item != null) return markNotificationRead(item);
+    await api.notifications.markRead(id);
+    await loadNotifications(silent: true);
+  }
+
   Future<void> markNotificationRead(AppNotification item) async {
     if (item.read) return;
     await api.notifications.markRead(item.id);

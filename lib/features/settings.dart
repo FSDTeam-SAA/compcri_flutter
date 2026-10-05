@@ -922,11 +922,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<void> _open(AppNotification item) async {
     final store = StoreScope.read(context);
     await store.markNotificationRead(item);
-    final eventId = item.eventId;
-    if (eventId == null || !mounted) return;
+    if (item.eventId == null || !mounted) return;
     final event = await runTask(
       context,
-      () => store.api.events.get(eventId),
+      // Never null here: the item names an event.
+      () async => (await store.eventForNotification(item.data))!,
       showSpinner: false,
     );
     if (event != null && mounted) go(context, '/event', event);

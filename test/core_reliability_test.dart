@@ -74,19 +74,45 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   for (final choice in ['This event', 'Cancel']) {
-    testWidgets('recurring tile deletion asks scope and honors $choice', (tester) async {
+    testWidgets('recurring tile deletion asks scope and honors $choice', (
+      tester,
+    ) async {
       final original = DateTime.now().add(const Duration(days: 2));
-      final event = CalendarEvent(id: 'repeating-tile', calendarId: calendarId, title: 'Daily event', startsAt: original.subtract(const Duration(days: 1)), endsAt: original.subtract(const Duration(days: 1)).add(const Duration(hours: 1)), occurrenceStartAt: original, occurrenceEndAt: original.add(const Duration(hours: 1)), occurrenceOriginalStartAt: original, recurrenceRrule: 'FREQ=DAILY;COUNT=3');
+      final event = CalendarEvent(
+        id: 'repeating-tile',
+        calendarId: calendarId,
+        title: 'Daily event',
+        startsAt: original.subtract(const Duration(days: 1)),
+        endsAt: original
+            .subtract(const Duration(days: 1))
+            .add(const Duration(hours: 1)),
+        occurrenceStartAt: original,
+        occurrenceEndAt: original.add(const Duration(hours: 1)),
+        occurrenceOriginalStartAt: original,
+        recurrenceRrule: 'FREQ=DAILY;COUNT=3',
+      );
       final writes = <Map<String, dynamic>>[];
-      final backend = FakeBackend()..handler = (request) async {
-        if (request.url.path.endsWith('/recurrence-exception')) {
-          writes.add(jsonDecode(request.body) as Map<String, dynamic>);
-          return ok({'event': row(event.id, event.startsAt), 'conflicts': []});
-        }
-        return null;
-      };
+      final backend = FakeBackend()
+        ..handler = (request) async {
+          if (request.url.path.endsWith('/recurrence-exception')) {
+            writes.add(jsonDecode(request.body) as Map<String, dynamic>);
+            return ok({
+              'event': row(event.id, event.startsAt),
+              'conflicts': [],
+            });
+          }
+          return null;
+        };
       final store = await bootedStore(tester, backend);
-      await tester.pumpWidget(StoreScope(notifier: store, child: MaterialApp(theme: appTheme, home: Scaffold(body: EventTile(event: event)))));
+      await tester.pumpWidget(
+        StoreScope(
+          notifier: store,
+          child: MaterialApp(
+            theme: appTheme,
+            home: Scaffold(body: EventTile(event: event)),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byType(PopupMenuButton<String>));
       await tester.pumpAndSettle();
@@ -98,9 +124,19 @@ void main() {
       expect(writes.length, choice == 'Cancel' ? 0 : 1);
       if (writes.isNotEmpty) {
         expect(writes.single['cancelled'], isTrue);
-        expect(writes.single['originalStartAt'], original.toUtc().toIso8601String());
+        expect(
+          writes.single['originalStartAt'],
+          original.toUtc().toIso8601String(),
+        );
       }
-      expect(backend.requests.any((request) => request.method == 'DELETE' && request.url.path.contains('repeating-tile')), isFalse);
+      expect(
+        backend.requests.any(
+          (request) =>
+              request.method == 'DELETE' &&
+              request.url.path.contains('repeating-tile'),
+        ),
+        isFalse,
+      );
       expect(tester.takeException(), isNull);
     });
   }

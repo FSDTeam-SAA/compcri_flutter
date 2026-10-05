@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -36,6 +38,27 @@ Future<void> main() async {
 /// session expires and the app has to return to sign-in.
 final navigatorKey = GlobalKey<NavigatorState>();
 
+/// The name of the route on top, so a notification tap can wait for the
+/// splash screen to hand over before opening anything.
+class _TopRoute extends NavigatorObserver {
+  String? name;
+  void _set(Route<dynamic>? route) => name = route?.settings.name;
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _set(route);
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
+      _set(newRoute);
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _set(previousRoute);
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _set(previousRoute);
+}
+
+final _topRoute = _TopRoute();
+
 class MyApp extends StatefulWidget {
   const MyApp({super.key, this.initialRoute = '/', this.store});
   final String initialRoute;
@@ -55,7 +78,35 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     store.addListener(_onStoreChanged);
+    PushMessaging.instance.onOpen = _openNotification;
     if (widget.store == null) store.bootstrap();
+  }
+
+  /// A tapped notification opens the event it is about, or the inbox when it
+  /// is not about an event — never just the app's front page.
+  Future<void> _openNotification(Map<String, String> data) async {
+    final id = data['notificationId'];
+    if (id != null && id.isNotEmpty) {
+      unawaited(store.markNotificationIdRead(id).catchError((Object _) {}));
+    }
+    // A cold start delivers the tap during the splash, which then replaces
+    // whatever is on top with the home screen. Open only once it has.
+    for (var i = 0; i < 50 && (_topRoute.name ?? '/') == '/'; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    CalendarEvent? event;
+    try {
+      event = await store.eventForNotification(data);
+    } catch (_) {
+      // Deleted or no longer shared: the inbox still explains it.
+    }
+    final navigator = navigatorKey.currentState;
+    if (navigator == null || !mounted) return;
+    if (event != null) {
+      unawaited(navigator.pushNamed('/event', arguments: event));
+    } else {
+      unawaited(navigator.pushNamed('/notifications'));
+    }
   }
 
   /// A refresh token that the server rejected drops the user at sign-in.
@@ -75,6 +126,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     store.removeListener(_onStoreChanged);
+    PushMessaging.instance.onOpen = null;
     store.dispose();
     super.dispose();
   }
@@ -94,6 +146,7 @@ class _MyAppState extends State<MyApp> {
         title: 'Aurox Day',
         debugShowCheckedModeBanner: false,
         navigatorKey: navigatorKey,
+        navigatorObservers: [_topRoute],
         theme: appTheme,
         darkTheme: darkAppTheme,
         themeMode: AppAppearance.mode,

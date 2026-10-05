@@ -40,6 +40,16 @@ class FakePush implements PushTransport {
   Stream<String> get tokenRefresh => refreshed.stream;
   @override
   Stream<RemoteMessage> get messages => incoming.stream;
+  final tapped = StreamController<RemoteMessage>.broadcast();
+  RemoteMessage? launch;
+  @override
+  Stream<RemoteMessage> get opened => tapped.stream;
+  @override
+  Future<RemoteMessage?> launchedBy() async {
+    final message = launch;
+    launch = null;
+    return message;
+  }
 }
 
 void main() {
@@ -85,8 +95,57 @@ void main() {
     await push.stop(store.api);
     await transport.refreshed.close();
     await transport.incoming.close();
+    await transport.tapped.close();
     push.dispose();
     store.dispose();
+  });
+
+  testWidgets('a tapped notification opens what it is about', (tester) async {
+    final opened = <Map<String, String>>[];
+    push.onOpen = (data) async => opened.add(data);
+    await push.start(store);
+
+    transport.tapped.add(
+      const RemoteMessage(
+        data: {
+          'eventId': '65b1f77bcf86cd7994390111',
+          'occurrenceStartAt': '2026-10-05T13:30:00.000Z',
+          'notificationId': 'n1',
+        },
+      ),
+    );
+    await tester.pump();
+    expect(opened.single, {
+      'eventId': '65b1f77bcf86cd7994390111',
+      'occurrenceStartAt': '2026-10-05T13:30:00.000Z',
+      'notificationId': 'n1',
+    });
+  });
+
+  testWidgets('a tap that launched the app is opened once it starts', (
+    tester,
+  ) async {
+    transport.launch = const RemoteMessage(data: {'eventId': 'launched'});
+    final opened = <Map<String, String>>[];
+    // The tap is known before the shell has installed its handler.
+    await push.start(store);
+    expect(opened, isEmpty);
+    push.onOpen = (data) async => opened.add(data);
+    expect(opened.single['eventId'], 'launched');
+    // Restarting (app resumed) does not open it a second time.
+    await push.start(store, requestPermission: false);
+    expect(opened, hasLength(1));
+  });
+
+  testWidgets('no tap is opened after signing out', (tester) async {
+    final opened = <Map<String, String>>[];
+    push.onOpen = (data) async => opened.add(data);
+    await push.start(store);
+    // Signing out talks to the server, so it runs on the real clock.
+    await tester.runAsync(() => push.stop(store.api));
+    transport.tapped.add(const RemoteMessage(data: {'eventId': 'late'}));
+    await tester.pump();
+    expect(opened, isEmpty);
   });
 
   testWidgets('permission denial is visible and does not register a token', (

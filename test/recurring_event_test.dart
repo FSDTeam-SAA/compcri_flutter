@@ -279,4 +279,52 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('a reminder for a repeating event opens the day it names', (
+    tester,
+  ) async {
+    final first = DateTime.now().add(const Duration(days: 1));
+    DateTime day(int offset) =>
+        DateTime(first.year, first.month, first.day + offset, 9, 30);
+    String iso(DateTime time) => time.toUtc().toIso8601String();
+    const id = '65b1f77bcf86cd7994390333';
+    final series = <String, dynamic>{
+      '_id': id,
+      'calendarId': calendarId,
+      'title': 'Daily check-in',
+      'startsAt': iso(day(0)),
+      'endsAt': iso(day(0).add(const Duration(hours: 1))),
+      'timeZone': 'America/New_York',
+      'recurrenceRrule': 'RRULE:FREQ=DAILY',
+      '__v': 1,
+    };
+    final backend = FakeBackend()
+      ..handler = (request) async {
+        if (request.url.path.endsWith('/events/$id')) {
+          return ok({
+            'event': series,
+            'permissions': {'edit': true, 'delete': true},
+          });
+        }
+        return null;
+      };
+    final store = await bootedStore(tester, backend);
+    // Three days in: not loaded in the store, so it comes from the server.
+    final event = await tester.runAsync(
+      () => store.eventForNotification({
+        'eventId': id,
+        'occurrenceStartAt': iso(day(3)),
+        'occurrenceOriginalStartAt': iso(day(3)),
+      }),
+    );
+    expect(event!.occurrenceStartAt, day(3));
+    expect(event.occurrenceEndAt, day(3).add(const Duration(hours: 1)));
+    expect(event.occurrenceOriginalStartAt, day(3));
+    // An older notification without the occurrence still opens the event.
+    final plain = await tester.runAsync(
+      () => store.eventForNotification({'eventId': id}),
+    );
+    expect(plain!.id, id);
+    expect(await store.eventForNotification({'title': 'no event'}), isNull);
+  });
 }

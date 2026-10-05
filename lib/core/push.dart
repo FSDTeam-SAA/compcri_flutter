@@ -18,6 +18,12 @@ abstract class PushTransport {
   Future<void> deleteToken();
   Stream<String> get tokenRefresh;
   Stream<RemoteMessage> get messages;
+
+  /// Notifications tapped while the app was in the background.
+  Stream<RemoteMessage> get opened;
+
+  /// The notification whose tap launched the app, once.
+  Future<RemoteMessage?> launchedBy();
 }
 
 class FirebasePushTransport implements PushTransport {
@@ -49,6 +55,10 @@ class FirebasePushTransport implements PushTransport {
   Stream<String> get tokenRefresh => messaging.onTokenRefresh;
   @override
   Stream<RemoteMessage> get messages => FirebaseMessaging.onMessage;
+  @override
+  Stream<RemoteMessage> get opened => FirebaseMessaging.onMessageOpenedApp;
+  @override
+  Future<RemoteMessage?> launchedBy() => messaging.getInitialMessage();
 }
 
 enum PushStatus { unavailable, checking, notRequested, denied, retrying, ready }
@@ -71,7 +81,33 @@ class PushMessaging extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _retry;
   StreamSubscription<String>? _refresh;
   StreamSubscription<RemoteMessage>? _foreground;
+  StreamSubscription<RemoteMessage>? _openedSub;
+  bool _checkedLaunch = false;
   PushStatus status = PushStatus.unavailable;
+
+  /// Opens what a tapped notification is about. Set by the app shell; a tap
+  /// that arrives before it is set, or before sign-in, waits in [_pendingOpen].
+  Future<void> Function(Map<String, String> data)? _onOpen;
+  Map<String, String>? _pendingOpen;
+
+  set onOpen(Future<void> Function(Map<String, String> data)? handler) {
+    _onOpen = handler;
+    _flushOpen();
+  }
+
+  void _opened(Map<String, dynamic> data) {
+    _pendingOpen = data.map((key, value) => MapEntry(key, '$value'));
+    _flushOpen();
+  }
+
+  void _flushOpen() {
+    final data = _pendingOpen, handler = _onOpen;
+    // [_store] is set by start(), which runs once signed in, and cleared by
+    // stop() on sign-out, so a tap never opens anything for a signed-out user.
+    if (data == null || handler == null || _store == null) return;
+    _pendingOpen = null;
+    unawaited(handler(data));
+  }
 
   void _setStatus(PushStatus value) {
     if (status == value) return;
@@ -131,6 +167,30 @@ class PushMessaging extends ChangeNotifier with WidgetsBindingObserver {
         final current = _store;
         if (current != null) unawaited(_receive(current, message));
       });
+      // A tapped notification opens what it is about: from the background,
+      // from a closed app, or from the banner Android shows while open.
+      _openedSub ??= _transport.opened.listen(
+        (message) => _opened(message.data),
+      );
+      if (!_checkedLaunch) {
+        _checkedLaunch = true;
+        final launched = await _transport.launchedBy();
+        if (launched != null) _opened(launched.data);
+        if (Platform.isAndroid) {
+          _native.setMethodCallHandler((call) async {
+            if (call.method == 'opened' && call.arguments is Map) {
+              _opened(Map<String, dynamic>.from(call.arguments as Map));
+            }
+          });
+          final banner = await _native.invokeMethod<Map<Object?, Object?>>(
+            'takeOpened',
+          );
+          if (banner != null) {
+            _opened(banner.map((key, value) => MapEntry('$key', value)));
+          }
+        }
+      }
+      _flushOpen();
       final permission = await _transport.permission(
         request:
             requestPermission &&
@@ -210,8 +270,11 @@ class PushMessaging extends ChangeNotifier with WidgetsBindingObserver {
     _retry?.cancel();
     await _refresh?.cancel();
     await _foreground?.cancel();
+    await _openedSub?.cancel();
     _refresh = null;
     _foreground = null;
+    _openedSub = null;
+    _pendingOpen = null;
     if (_observing) {
       WidgetsBinding.instance.removeObserver(this);
     }
@@ -254,6 +317,7 @@ class PushMessaging extends ChangeNotifier with WidgetsBindingObserver {
               prefs?.reminders != false)) {
         await _native.invokeMethod<void>('show', {
           'id': message.data['notificationId'] ?? message.messageId ?? '',
+          'data': message.data,
           'title': message.notification?.title,
           'body': message.notification?.body,
           'alarm':

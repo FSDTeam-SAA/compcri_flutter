@@ -15,15 +15,33 @@ import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 
 class MainActivity : FlutterActivity() {
+    private var channel: MethodChannel? = null
+
+    /** The data of a banner tapped before Flutter asked for it (cold start). */
+    private var pendingOpen: HashMap<String, String>? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createNotificationChannels()
+        pendingOpen = openedData(intent)
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val data = openedData(intent) ?: return
+        // Running app: hand the tap straight to Flutter.
+        val current = channel
+        if (current != null) current.invokeMethod("opened", data) else pendingOpen = data
+    }
+
+    @Suppress("UNCHECKED_CAST", "DEPRECATION")
+    private fun openedData(intent: Intent?): HashMap<String, String>? =
+        intent?.getSerializableExtra(OPEN_EXTRA) as? HashMap<String, String>
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.auroxday.app/notifications")
-            .setMethodCallHandler { call, result ->
+        channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.auroxday.app/notifications")
+        channel!!.setMethodCallHandler { call, result ->
                 val manager = getSystemService(NotificationManager::class.java)
                 when (call.method) {
                     "notificationsEnabled" -> result.success(
@@ -42,6 +60,10 @@ class MainActivity : FlutterActivity() {
                         startActivity(intent)
                         result.success(null)
                     }
+                    "takeOpened" -> {
+                        result.success(pendingOpen)
+                        pendingOpen = null
+                    }
                     "show" -> {
                         createNotificationChannels()
                         val alarm = call.argument<Boolean>("alarm") == true
@@ -52,8 +74,16 @@ class MainActivity : FlutterActivity() {
                             @Suppress("DEPRECATION")
                             Notification.Builder(this)
                         }
+                        // The tap carries the notification's data, so the app
+                        // can open the event it is about.
+                        val data = HashMap<String, String>()
+                        call.argument<Map<String, Any?>>("data")?.forEach { (key, value) ->
+                            if (value != null) data[key] = value.toString()
+                        }
                         val open = PendingIntent.getActivity(this, id,
-                            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                            Intent(this, MainActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                                .putExtra(OPEN_EXTRA, data),
                             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                         builder.setSmallIcon(R.drawable.ic_notification)
                             .setContentTitle(call.argument<String>("title"))
@@ -119,5 +149,9 @@ class MainActivity : FlutterActivity() {
                 )
             }
         )
+    }
+
+    companion object {
+        private const val OPEN_EXTRA = "com.auroxday.app.notification"
     }
 }

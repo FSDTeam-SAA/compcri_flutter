@@ -133,9 +133,10 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java) ?: return
 
-        // The first sound channel used the phone's default sound, which some
-        // phones do not have; reminders now carry the app's own.
+        // Earlier reminder channels, whose sounds can no longer change: the
+        // phone's default sound (missing on some phones), then a single chime.
         manager.deleteNotificationChannel("aurox_reminders")
+        manager.deleteNotificationChannel("aurox_reminders_v2")
         manager.createNotificationChannel(
             NotificationChannel(
                 REMINDER_CHANNEL,
@@ -191,12 +192,15 @@ class MainActivity : FlutterActivity() {
         private const val OPEN_EXTRA = "com.auroxday.app.notification"
 
         /**
-         * Reminders play the app's own sound, the same on every phone.
-         * To change it: replace res/raw/aurox_reminder.wav and
-         * ios/Runner/aurox_reminder.caf, then raise this version (Android
-         * keeps a channel's sound for good) and the server's channelId in
-         * services/notification.service.js to match.
+         * Reminders play the app's own sound (a chime three times), the same
+         * on every phone. To change it: replace res/raw/aurox_reminder.wav
+         * and ios/Runner/aurox_reminder.caf, raise this version (Android
+         * keeps a channel's sound for good), delete the old channel above,
+         * and set reminder_channel_id in res/values/strings.xml to match.
+         * That id is Firebase's default channel, so a push naming a channel
+         * this build does not have still rings on this one: the server need
+         * not change in step with the app.
          */
-        const val REMINDER_CHANNEL = "aurox_reminders_v2"
+        const val REMINDER_CHANNEL = "aurox_reminders_v3"
     }
 }

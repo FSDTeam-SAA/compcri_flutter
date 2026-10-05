@@ -1334,7 +1334,7 @@ class _NotificationSettingsScreenState
           ),
           const SizedBox(height: 12),
           const Text(
-            'Events notify at their start time by default. Advance reminders are optional. Alarm-style Reminders adds sound; turning it off keeps notifications enabled.',
+            'Events notify at their start time by default, with your notification sound. Advance reminders are optional. Alarm-style Reminders ring like an alarm and break through Do Not Disturb.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 12),
@@ -1594,8 +1594,9 @@ class _AssistantFormState extends State<AssistantForm> {
     );
     if (result == null ||
         !mounted ||
-        email.text.trim().toLowerCase() != checkedEmail)
+        email.text.trim().toLowerCase() != checkedEmail) {
       return;
+    }
     final exists = result['exists'] == true;
     final user = result['user'];
     setState(() {

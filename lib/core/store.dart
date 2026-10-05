@@ -198,8 +198,9 @@ class AppStore extends ChangeNotifier {
     _adoptLanguage();
     primaryCalendar = me.calendar;
     if (calendar == null || calendar!.isOwned) calendar = primaryCalendar;
-    if (calendars.isEmpty && primaryCalendar != null)
+    if (calendars.isEmpty && primaryCalendar != null) {
       calendars = [primaryCalendar!];
+    }
     notifyListeners();
     unawaited(refreshCalendars());
     unawaited(loadSubscription());

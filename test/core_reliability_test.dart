@@ -211,8 +211,9 @@ void main() {
       var offline = true;
       final backend = FakeBackend()
         ..handler = (request) async {
-          if (offline && request.url.path.endsWith('/users/me'))
+          if (offline && request.url.path.endsWith('/users/me')) {
             throw http.ClientException('offline');
+          }
           return null;
         };
       final store = await bootedStore(tester, backend);
@@ -254,9 +255,10 @@ void main() {
       (tester) async {
         final backend = FakeBackend()
           ..handler = (request) async {
-            if (request.url.path.endsWith('/users/me/calendars'))
+            if (request.url.path.endsWith('/users/me/calendars')) {
               return ok(accessible(preset));
-            if (request.url.path.endsWith('/calendars/$delegatedId/events'))
+            }
+            if (request.url.path.endsWith('/calendars/$delegatedId/events')) {
               return ok([
                 row(
                   'Delegated appointment',
@@ -264,6 +266,7 @@ void main() {
                   calendar: delegatedId,
                 ),
               ]);
+            }
             return null;
           };
         final store = await bootedStore(tester, backend);
@@ -304,9 +307,10 @@ void main() {
       var granted = true;
       final backend = FakeBackend()
         ..handler = (request) async {
-          if (request.url.path.endsWith('/users/me/calendars') && granted)
+          if (request.url.path.endsWith('/users/me/calendars') && granted) {
             return ok(accessible('ADD_EDIT'));
-          if (request.url.path.endsWith('/calendars/$delegatedId/events'))
+          }
+          if (request.url.path.endsWith('/calendars/$delegatedId/events')) {
             return ok([
               row(
                 'Private delegated row',
@@ -314,6 +318,7 @@ void main() {
                 calendar: delegatedId,
               ),
             ]);
+          }
           return null;
         };
       final store = await bootedStore(tester, backend);
@@ -336,10 +341,12 @@ void main() {
       final store = await bootedStore(tester, backend);
       final old = Completer<http.Response>();
       backend.handler = (request) async {
-        if (!request.url.path.endsWith('/calendars/$calendarId/events'))
+        if (!request.url.path.endsWith('/calendars/$calendarId/events')) {
           return null;
-        if (request.url.queryParameters['from']!.startsWith('2026-10'))
+        }
+        if (request.url.queryParameters['from']!.startsWith('2026-10')) {
           return old.future;
+        }
         return ok([row('Latest month', DateTime(2027, 2, 2))]);
       };
       await tester.runAsync(() async {
@@ -437,7 +444,7 @@ void main() {
         json['_id'] = 'shared-event';
         backend.handler = (request) async {
           if (request.url.path.endsWith('/events/shared')) return ok([json]);
-          if (request.url.path.endsWith('/events/shared-event'))
+          if (request.url.path.endsWith('/events/shared-event')) {
             return ok({
               'event': json,
               'permissions': {
@@ -447,6 +454,7 @@ void main() {
                 'share': false,
               },
             });
+          }
           return null;
         };
         final store = await bootedStore(tester, backend);
@@ -491,8 +499,9 @@ void main() {
               },
             });
           }
-          if (request.url.path.endsWith('/delegations'))
+          if (request.url.path.endsWith('/delegations')) {
             return ok(request.method == 'GET' ? [] : {});
+          }
           return null;
         };
       final store = await bootedStore(tester, backend);

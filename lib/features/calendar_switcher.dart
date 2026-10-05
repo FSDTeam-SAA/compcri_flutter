@@ -70,8 +70,9 @@ class CalendarSwitcher extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
     final active = store.calendar;
-    if (active == null || store.calendars.length < 2)
+    if (active == null || store.calendars.length < 2) {
       return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
       child: ListTile(

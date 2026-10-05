@@ -50,24 +50,29 @@ class _DashboardState extends State<Dashboard>
       if (!mounted) return;
       final store = StoreScope.read(context);
       // A resumed session already has data; a fresh sign-in does not.
-      if (store.events.isEmpty)
+      if (store.events.isEmpty) {
         store.loadEvents(silent: true).catchError((Object _) {});
-      if (store.notifications.isEmpty)
+      }
+      if (store.notifications.isEmpty) {
         store.loadNotifications(silent: true).catchError((Object _) {});
-      if (store.contacts.isEmpty)
+      }
+      if (store.contacts.isEmpty) {
         store.loadNetwork(silent: true).catchError((Object _) {});
-      if (store.notes.isEmpty)
+      }
+      if (store.notes.isEmpty) {
         store.loadNotes(silent: true).catchError((Object _) {});
+      }
     });
   }
 
   void selectTab(int value) {
     if (value == tab) return;
     setState(() => tab = value);
-    if (value == 0)
+    if (value == 0) {
       StoreScope.read(
         context,
       ).ensureWindow(DateTime.now()).catchError((Object _) {});
+    }
     if (!MediaQuery.disableAnimationsOf(context)) reveal.forward(from: 0);
   }
 
@@ -154,8 +159,9 @@ class _ChatTabState extends State<ChatTab> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted)
+      if (mounted) {
         StoreScope.read(context).loadConversations().catchError((Object _) {});
+      }
     });
   }
 

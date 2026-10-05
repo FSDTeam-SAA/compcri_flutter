@@ -135,8 +135,6 @@ const _pt = <String, String>{
       'A notificação no horário do evento está incluída. Escolha um lembrete antecipado para receber uma notificação extra antes do evento.',
   'The advance reminder time has passed. You will still be notified when the event starts.':
       'O horário do lembrete antecipado já passou. Você ainda será notificado quando o evento começar.',
-  'Events notify at their start time by default. Advance reminders are optional. Alarm-style Reminders adds sound; turning it off keeps notifications enabled.':
-      'Por padrão, os eventos notificam no horário de início. Lembretes antecipados são opcionais. Lembretes tipo alarme adicionam som; desativá-los mantém as notificações ativadas.',
 
   '10 Minutes': '10 minutos',
   '30 Minutes': '30 minutos',
@@ -936,6 +934,8 @@ const _pt = <String, String>{
   'Scroll, or tap a number to type.':
       'Role, ou toque em um número para digitar.',
   'Change image': 'Trocar imagem',
+  'Events notify at their start time by default, with your notification sound. Advance reminders are optional. Alarm-style Reminders ring like an alarm and break through Do Not Disturb.':
+      'Os eventos avisam no horário de início por padrão, com o som de notificação. Lembretes antecipados são opcionais. Lembretes estilo alarme tocam como um alarme e passam pelo Não Perturbe.',
 };
 
 const _es = <String, String>{
@@ -1069,8 +1069,6 @@ const _es = <String, String>{
       'La notificación a la hora del evento está incluida. Elige un recordatorio anticipado para recibir una notificación extra antes del evento.',
   'The advance reminder time has passed. You will still be notified when the event starts.':
       'La hora del recordatorio anticipado ya pasó. Recibirás una notificación cuando empiece el evento.',
-  'Events notify at their start time by default. Advance reminders are optional. Alarm-style Reminders adds sound; turning it off keeps notifications enabled.':
-      'Por defecto, los eventos notifican a su hora de inicio. Los recordatorios anticipados son opcionales. Recordatorios tipo alarma añade sonido; desactivarlo mantiene las notificaciones activadas.',
 
   '10 Minutes': '10 minutos',
   '30 Minutes': '30 minutos',
@@ -1872,4 +1870,6 @@ const _es = <String, String>{
   'Scroll, or tap a number to type.':
       'Desliza, o toca un número para escribir.',
   'Change image': 'Cambiar imagen',
+  'Events notify at their start time by default, with your notification sound. Advance reminders are optional. Alarm-style Reminders ring like an alarm and break through Do Not Disturb.':
+      'Los eventos avisan a su hora de inicio por defecto, con el sonido de notificación. Los recordatorios anticipados son opcionales. Los recordatorios tipo alarma suenan como una alarma y atraviesan No molestar.',
 };

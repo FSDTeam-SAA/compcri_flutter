@@ -318,6 +318,7 @@ class PushMessaging extends ChangeNotifier with WidgetsBindingObserver {
         await _native.invokeMethod<void>('show', {
           'id': message.data['notificationId'] ?? message.messageId ?? '',
           'data': message.data,
+          'category': message.data['category'],
           'title': message.notification?.title,
           'body': message.notification?.body,
           'alarm':

@@ -47,7 +47,7 @@ class MainActivity : FlutterActivity() {
                     "notificationsEnabled" -> result.success(
                         (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || manager.areNotificationsEnabled()) &&
                         (Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
-                            manager.getNotificationChannel(if (call.argument<Boolean>("alarm") == true) "aurox_alarms" else "aurox_reminders_silent")?.importance != NotificationManager.IMPORTANCE_NONE)
+                            manager.getNotificationChannel(if (call.argument<Boolean>("alarm") == true) "aurox_alarms" else "aurox_reminders")?.importance != NotificationManager.IMPORTANCE_NONE)
                     )
                     "openSettings" -> {
                         val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -67,9 +67,15 @@ class MainActivity : FlutterActivity() {
                     "show" -> {
                         createNotificationChannels()
                         val alarm = call.argument<Boolean>("alarm") == true
+                        val reminder = call.argument<String>("category") == "REMINDER"
                         val id = call.argument<String>("id").orEmpty().hashCode()
+                        val channelId = when {
+                            alarm -> "aurox_alarms"
+                            reminder -> "aurox_reminders"
+                            else -> "aurox_reminders_silent"
+                        }
                         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            Notification.Builder(this, if (alarm) "aurox_alarms" else "aurox_reminders_silent")
+                            Notification.Builder(this, channelId)
                         } else {
                             @Suppress("DEPRECATION")
                             Notification.Builder(this)
@@ -93,7 +99,7 @@ class MainActivity : FlutterActivity() {
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
                             @Suppress("DEPRECATION")
                             builder.setPriority(Notification.PRIORITY_HIGH)
-                            if (alarm) builder.setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
+                            if (alarm || reminder) builder.setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
                         }
                         try {
                             manager.notify(id, builder.build())
@@ -108,8 +114,11 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * Declare the channels before Firebase needs them. The silent reminder
-     * channel shows a banner without sound; the alarm channel also rings.
+     * Declare the channels before Firebase needs them. Reminders make the
+     * phone's notification sound; alarm-style reminders ring like an alarm and
+     * break through Do Not Disturb; everything else shows quietly. The quiet
+     * channel keeps its old id because a channel's sound cannot be changed
+     * once it exists, so reminders moved to a new one instead.
      * Channel settings belong here because
      * importance is fixed when the channel is created and Android will not let
      * it be raised afterwards.
@@ -120,11 +129,29 @@ class MainActivity : FlutterActivity() {
 
         manager.createNotificationChannel(
             NotificationChannel(
-                "aurox_reminders_silent",
+                "aurox_reminders",
                 "Reminders",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Event reminders without alarm sound"
+                description = "Event reminders"
+                enableVibration(true)
+                setSound(
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+            }
+        )
+
+        manager.createNotificationChannel(
+            NotificationChannel(
+                "aurox_reminders_silent",
+                "Updates",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Invitations and other updates, without sound"
                 setSound(null, null)
                 enableVibration(false)
             }

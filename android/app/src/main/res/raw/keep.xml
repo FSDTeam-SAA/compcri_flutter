@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The reminder sound is named by the server's push payload, not only by
+     code, so resource shrinking must never drop it. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/aurox_reminder" />

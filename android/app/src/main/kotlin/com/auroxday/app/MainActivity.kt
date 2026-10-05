@@ -47,7 +47,7 @@ class MainActivity : FlutterActivity() {
                     "notificationsEnabled" -> result.success(
                         (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || manager.areNotificationsEnabled()) &&
                         (Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
-                            manager.getNotificationChannel(if (call.argument<Boolean>("alarm") == true) "aurox_alarms" else "aurox_reminders")?.importance != NotificationManager.IMPORTANCE_NONE)
+                            manager.getNotificationChannel(if (call.argument<Boolean>("alarm") == true) "aurox_alarms" else REMINDER_CHANNEL)?.importance != NotificationManager.IMPORTANCE_NONE)
                     )
                     "openSettings" -> {
                         val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -71,7 +71,7 @@ class MainActivity : FlutterActivity() {
                         val id = call.argument<String>("id").orEmpty().hashCode()
                         val channelId = when {
                             alarm -> "aurox_alarms"
-                            reminder -> "aurox_reminders"
+                            reminder -> REMINDER_CHANNEL
                             else -> "aurox_reminders_silent"
                         }
                         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -99,7 +99,13 @@ class MainActivity : FlutterActivity() {
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
                             @Suppress("DEPRECATION")
                             builder.setPriority(Notification.PRIORITY_HIGH)
-                            if (alarm || reminder) builder.setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
+                            if (alarm) {
+                                builder.setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
+                            } else if (reminder) {
+                                // No channels before Android 8: the sound goes on the notification.
+                                builder.setDefaults(Notification.DEFAULT_VIBRATE)
+                                builder.setSound(android.net.Uri.parse("android.resource://$packageName/${R.raw.aurox_reminder}"))
+                            }
                         }
                         try {
                             manager.notify(id, builder.build())
@@ -127,16 +133,19 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java) ?: return
 
+        // The first sound channel used the phone's default sound, which some
+        // phones do not have; reminders now carry the app's own.
+        manager.deleteNotificationChannel("aurox_reminders")
         manager.createNotificationChannel(
             NotificationChannel(
-                "aurox_reminders",
+                REMINDER_CHANNEL,
                 "Reminders",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Event reminders"
                 enableVibration(true)
                 setSound(
-                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                    android.net.Uri.parse("android.resource://$packageName/${R.raw.aurox_reminder}"),
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -180,5 +189,14 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val OPEN_EXTRA = "com.auroxday.app.notification"
+
+        /**
+         * Reminders play the app's own sound, the same on every phone.
+         * To change it: replace res/raw/aurox_reminder.wav and
+         * ios/Runner/aurox_reminder.caf, then raise this version (Android
+         * keeps a channel's sound for good) and the server's channelId in
+         * services/notification.service.js to match.
+         */
+        const val REMINDER_CHANNEL = "aurox_reminders_v2"
     }
 }

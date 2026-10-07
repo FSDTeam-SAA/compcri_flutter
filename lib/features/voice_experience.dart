@@ -38,6 +38,9 @@ class VoiceExperience extends StatefulWidget {
     this.error,
     this.allowance,
     this.allowanceLow = false,
+    this.minimal = false,
+    this.proposals = const SizedBox.shrink(),
+    this.onClose,
   });
 
   /// The turn in flight has been transcribed and the reply is being written.
@@ -75,6 +78,9 @@ class VoiceExperience extends StatefulWidget {
   final TextEditingController controller;
   final ScrollController scroll;
   final Widget messages;
+  final bool minimal;
+  final Widget proposals;
+  final VoidCallback? onClose;
 
   @override
   State<VoiceExperience> createState() => _VoiceExperienceState();
@@ -88,6 +94,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
     final reduce = MediaQuery.disableAnimationsOf(context);
     final duration = reduce ? Duration.zero : const Duration(milliseconds: 220);
     final disabled = widget.busy || widget.sending;
+    if (widget.minimal) return _callView(disabled);
     final status = widget.recording
         ? 'Listening to you'
         : widget.sending
@@ -544,6 +551,119 @@ class _VoiceExperienceState extends State<VoiceExperience> {
       ],
     );
   }
+
+  Widget _callView(bool disabled) => Column(
+    children: [
+      Expanded(
+        child: LayoutBuilder(
+          builder: (context, box) => SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: math.max(0, box.maxHeight - 24),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  VoiceOrb(
+                    size: math.min(330, math.max(160, box.maxWidth - 48)),
+                    active: widget.recording || widget.speaking,
+                    onTap: disabled ? null : widget.onRecord,
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    widget.recording
+                        ? 'Listening to you'
+                        : widget.speaking
+                        ? tr('{name} is speaking', {
+                            'name': widget.assistantName,
+                          })
+                        : widget.sending
+                        ? 'Working on your message'
+                        : 'Tap the mic to talk',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppPalette.of(context).muted,
+                    ),
+                  ),
+                  if (widget.error != null) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      widget.error!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                  if (widget.hasRetry)
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      children: [
+                        TextButton(
+                          onPressed: disabled ? null : widget.onRetry,
+                          child: const Text('Retry send'),
+                        ),
+                        TextButton(
+                          onPressed: disabled ? null : widget.onDiscard,
+                          child: const Text('Discard recording'),
+                        ),
+                      ],
+                    ),
+                  widget.proposals,
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                key: const ValueKey('hands-free-text'),
+                controller: widget.controller,
+                textInputAction: TextInputAction.send,
+                onSubmitted: disabled ? null : widget.onSend,
+                decoration: InputDecoration(
+                  hintText: tr('Ask {name}…', {'name': widget.assistantName}),
+                  suffixIcon: IconButton(
+                    tooltip: tr('Send'),
+                    onPressed: disabled
+                        ? null
+                        : () => widget.onSend(widget.controller.text),
+                    icon: Icon(
+                      Icons.arrow_upward,
+                      color: AppPalette.of(context).accent,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              tooltip: widget.handsFree
+                  ? tr('Mute microphone')
+                  : tr('Resume hands-free'),
+              onPressed: disabled
+                  ? null
+                  : () => widget.onHandsFree(!widget.handsFree),
+              icon: Icon(widget.handsFree ? Icons.mic : Icons.mic_off),
+            ),
+            IconButton.filledTonal(
+              tooltip: tr('End call'),
+              onPressed: widget.onClose,
+              icon: const Icon(Icons.close),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
 }
 
 /// Compact pill for the call-level toggles that sit above the microphone row.

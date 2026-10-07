@@ -680,6 +680,8 @@ class AiApi {
   Future<void> deleteConversation(String id) =>
       _client.delete('/ai/conversations/$id');
 
+  Future<void> deleteAllConversations() => _client.delete('/ai/conversations');
+
   /// Keeps a conversation past the retention window, or lets it rejoin it.
   Future<void> setConversationSaved(String id, bool saved) =>
       _client.patch('/ai/conversations/$id/saved', body: {'saved': saved});
@@ -703,10 +705,12 @@ class AiApi {
   Stream<AiStreamEvent> streamMessage({
     required String conversationId,
     required String content,
+    bool speak = false,
+    String? voice,
   }) => _client
       .stream(
         '/ai/conversations/$conversationId/messages/stream',
-        body: {'content': content},
+        body: {'content': content, if (speak) 'speak': true, 'voice': ?voice},
       )
       .map(AiStreamEvent.fromJson);
 

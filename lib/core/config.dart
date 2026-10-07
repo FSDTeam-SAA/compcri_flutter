@@ -51,4 +51,5 @@ const speechRecordConfig = RecordConfig(
   sampleRate: 16000,
   numChannels: 1,
   bitRate: 32000,
+  iosConfig: IosRecordConfig(allowHapticsAndSystemSoundsDuringRecording: true),
 );

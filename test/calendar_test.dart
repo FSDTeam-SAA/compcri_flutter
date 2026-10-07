@@ -1,5 +1,6 @@
 import 'package:compcri_flutter/core/design.dart';
 import 'package:compcri_flutter/core/store.dart';
+import 'package:compcri_flutter/core/i18n.dart' as app_text;
 import 'package:compcri_flutter/features/calendar.dart';
 import 'package:compcri_flutter/features/events.dart';
 import 'package:flutter/material.dart';
@@ -72,7 +73,7 @@ void main() {
 
     // Tapping a day carries the selection into the other views, so switching
     // lands where the user was looking rather than back on today.
-    final target = today.day == 1 ? 2 : 1;
+    final target = today.day;
     // The date strip also contains this number, including off-screen cells.
     // Select the visible cell in the month grid.
     final cell = find.descendant(
@@ -189,6 +190,76 @@ void main() {
     expect(find.text('Duration: 1 hour'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets(
+    'month shows the selected day’s events and the actual today date',
+    (tester) async {
+      await pumpCalendar(tester, FakeBackend());
+      await tester.tap(find.text('Month'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('month-selected-date')),
+      );
+      expect(find.text('Lunch with Ana'), findsOneWidget);
+      expect(find.text('Agenda'), findsOneWidget);
+      final todayLabel = tester.widget<app_text.Text>(
+        find.byKey(const ValueKey('calendar-today-date')),
+      );
+      final displayedToday = todayLabel.data;
+      await tester.ensureVisible(find.byTooltip('Previous month'));
+      await tester.tap(find.byTooltip('Previous month'));
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byType(CustomScrollView).first,
+        const Offset(0, 700),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<app_text.Text>(
+              find.byKey(const ValueKey('calendar-today-date')),
+            )
+            .data,
+        displayedToday,
+      );
+      expect(find.byTooltip('Create Event'), findsNothing);
+      expect(find.text('Past dates are view-only'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'past dates show events with no creation affordances and today stays unlocked',
+    (tester) async {
+      final store = await pumpCalendar(tester, FakeBackend());
+      final past = DateUtils.dateOnly(
+        DateTime.now(),
+      ).subtract(const Duration(days: 7));
+      store.events = [
+        CalendarEvent.fromJson({
+          '_id': 'past-event',
+          'title': 'Past appointment',
+          'startsAt': past.add(const Duration(hours: 9)).toIso8601String(),
+          'endsAt': past.add(const Duration(hours: 10)).toIso8601String(),
+        }),
+      ];
+      await tester.tap(find.byTooltip('Previous week'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Agenda'));
+      await tester.pumpAndSettle();
+      expect(find.text('Past appointment'), findsOneWidget);
+      expect(find.byTooltip('Create Event'), findsNothing);
+      expect(find.textContaining('free · tap to add'), findsNothing);
+      expect(find.text('Past dates are view-only'), findsOneWidget);
+      await tester.tap(find.text('Today'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Create Event'), findsOneWidget);
+      expect(find.text('Past dates are view-only'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   testWidgets('a failed load offers a retry and never claims free time', (
     tester,

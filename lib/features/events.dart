@@ -109,7 +109,10 @@ class EventTile extends StatelessWidget {
                           color: AppPalette.of(context).accent,
                         ),
                       )
-                    else if (event.canEdit || event.canDelete)
+                    else if ((event.canEdit &&
+                            !isPastDay(event.occurrenceStartAt)) ||
+                        (event.canDelete &&
+                            !isPastDay(event.occurrenceStartAt)))
                       PopupMenuButton<String>(
                         icon: const Icon(Icons.more_vert, size: 19),
                         onSelected: (value) async {
@@ -177,12 +180,14 @@ class EventTile extends StatelessWidget {
                           if (done) onChanged?.call();
                         },
                         itemBuilder: (_) => [
-                          if (event.canEdit)
+                          if ((event.canEdit &&
+                              !isPastDay(event.occurrenceStartAt)))
                             const PopupMenuItem(
                               value: 'edit',
                               child: Text('Edit'),
                             ),
-                          if (event.canDelete)
+                          if ((event.canDelete &&
+                              !isPastDay(event.occurrenceStartAt)))
                             const PopupMenuItem(
                               value: 'delete',
                               child: Text('Delete'),
@@ -511,6 +516,14 @@ class _EventFormState extends State<EventForm> {
   Future<void> save() async {
     if (!form.currentState!.validate()) return;
     final (startsAt, endsAt) = _range();
+    if (isPastDay(startsAt) ||
+        (widget.event != null && isPastDay(widget.event!.occurrenceStartAt))) {
+      toastError(
+        context,
+        'Past dates are view-only. Choose today or a future date.',
+      );
+      return;
+    }
 
     // Editing a recurring event has to say whether it means this occurrence or
     // the whole series; the API has a separate endpoint for each.
@@ -1044,6 +1057,10 @@ class _EventDetailsState extends State<EventDetails> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (isPastDay(event.occurrenceStartAt)) ...[
+            const Surface(child: Text('Past dates are view-only')),
+            const SizedBox(height: 16),
+          ],
           if (event.hasPoster)
             PosterImage(
               image: NetworkImage(event.poster!.secureUrl),
@@ -1136,18 +1153,21 @@ class _EventDetailsState extends State<EventDetails> {
                     'Delete Event',
                     danger: true,
                     icon: Icons.delete_outline,
-                    onPressed: event.canDelete ? _delete : null,
+                    onPressed:
+                        (event.canDelete && !isPastDay(event.occurrenceStartAt))
+                        ? _delete
+                        : null,
                   ),
                 ),
               ],
             ),
           ],
-          if (event.canEdit) ...[
+          if ((event.canEdit && !isPastDay(event.occurrenceStartAt))) ...[
             const SizedBox(height: 14),
             PrimaryButton(
               'Edit Event',
               icon: Icons.edit_outlined,
-              onPressed: event.canEdit
+              onPressed: (event.canEdit && !isPastDay(event.occurrenceStartAt))
                   ? () async {
                       await go(context, '/event/edit', event);
                       await _reload();
@@ -1159,7 +1179,8 @@ class _EventDetailsState extends State<EventDetails> {
               padding: EdgeInsets.zero,
               child: CheckboxListTile(
                 value: event.completed,
-                onChanged: event.canEdit
+                onChanged:
+                    (event.canEdit && !isPastDay(event.occurrenceStartAt))
                     ? (value) async {
                         final done = await runAction(
                           context,

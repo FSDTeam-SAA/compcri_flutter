@@ -574,6 +574,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// the app listens again, and a pause ends the turn. Off by default because
   /// it holds the microphone open between turns.
   bool handsFree = false;
+  bool callMode = false;
   String? preferredVoice;
 
   /// Guards the auto-listen hop so a late playback event cannot start a second
@@ -605,7 +606,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   void initState() {
     super.initState();
     conversationId = widget.conversationId;
-    unawaited(_prepareAudioSession());
+
     playbackSubscription = player.onPlayerStateChanged.listen((state) {
       if (mounted) setState(() => speaking = state == PlayerState.playing);
     });
@@ -635,34 +636,56 @@ class _ConversationScreenState extends State<ConversationScreen> {
     });
   }
 
-  /// Lets the reply be heard on a phone that has just been recording.
-  ///
-  /// The recorder claims the iOS audio session for recording; left at its
-  /// playback-only default the player then either fails outright or comes out
-  /// of the earpiece, which reads as a reply with no sound. Declaring one
-  /// session that does both, routed to the loudspeaker, is what keeps a
-  /// spoken answer audible between turns.
-  Future<void> _prepareAudioSession() async {
-    try {
-      await AudioPlayer.global.setAudioContext(
-        AudioContext(
-          iOS: AudioContextIOS(
-            category: AVAudioSessionCategory.playAndRecord,
-            options: const {
-              AVAudioSessionOptions.defaultToSpeaker,
-              AVAudioSessionOptions.allowBluetooth,
-              AVAudioSessionOptions.mixWithOthers,
-            },
-          ),
-          android: const AudioContextAndroid(
-            contentType: AndroidContentType.speech,
-            usageType: AndroidUsageType.assistant,
-            audioFocus: AndroidAudioFocus.gainTransientMayDuck,
-          ),
-        ),
-      );
-    } catch (_) {
-      // A platform that cannot take a context still plays on its defaults.
+  /// Recording owns the shared iOS session until it stops. Reapply playback
+  /// before each clip so speech uses the speaker and ignores the silent switch.
+  Future<void> _prepareAudioSession() => player.setAudioContext(
+    AudioContext(
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playback,
+        options: const {AVAudioSessionOptions.mixWithOthers},
+      ),
+      android: const AudioContextAndroid(
+        contentType: AndroidContentType.speech,
+        usageType: AndroidUsageType.media,
+        audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+      ),
+    ),
+  );
+
+  final speechFiles = <String>{};
+  String? currentSpeechFile;
+
+  /// AVPlayer needs a recognizable file type, also on older iOS releases.
+  /// Reclaim the playback session after recording, and check cancellation
+  /// before resuming so leaving a call never starts late audio.
+  Future<void> _playClip(Uint8List clip) async {
+    final token = replyTurn;
+    final directory = await getTemporaryDirectory();
+    if (!mounted || token != replyTurn) return;
+    final file = File(
+      '${directory.path}/aurox-speech-${DateTime.now().microsecondsSinceEpoch}.mp3',
+    );
+    speechFiles.add(file.path);
+    await file.writeAsBytes(clip, flush: true);
+    if (!mounted || token != replyTurn) {
+      await _deleteAudio(file.path);
+      speechFiles.remove(file.path);
+      return;
+    }
+    await _prepareAudioSession();
+    if (!mounted || token != replyTurn) return;
+    await player.setSource(DeviceFileSource(file.path, mimeType: 'audio/mpeg'));
+    if (!mounted || token != replyTurn) return;
+    currentSpeechFile = file.path;
+    await player.resume();
+  }
+
+  void _clearSpeechFile() {
+    final path = currentSpeechFile;
+    currentSpeechFile = null;
+    if (path != null) {
+      speechFiles.remove(path);
+      unawaited(_deleteAudio(path));
     }
   }
 
@@ -674,7 +697,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
       final prefs = await store.api.client.store.voicePrefs();
       if (!mounted) return;
       setState(() {
-        handsFree = prefs.handsFree;
+        // A remembered preference never starts the microphone without a tap.
+        handsFree = false;
         mutedAudio = prefs.muted;
         preferredVoice = prefs.voice;
       });
@@ -732,7 +756,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (recording) unawaited(recorder.cancel());
     final unsent = retryAudioPath;
     if (unsent != null) unawaited(_deleteAudio(unsent));
-    player.dispose();
+    unawaited(
+      player.dispose().whenComplete(() async {
+        for (final path in speechFiles) {
+          await _deleteAudio(path);
+        }
+        speechFiles.clear();
+      }),
+    );
     recorder.dispose();
     super.dispose();
   }
@@ -805,6 +836,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
     final store = StoreScope.read(context);
     input.clear();
+    if (widget.voiceMode || replySounding) await _stopReply();
+    if (!mounted) return;
+    final speak = widget.voiceMode && !mutedAudio;
+    final playback = replyTurn;
+    final clips = <Uint8List>[];
+    var speechOpen = false;
+    var delivered = false;
 
     setState(() {
       sending = true;
@@ -824,10 +862,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
       // The turn is watched as it happens. Leaving the screen mid-answer just
       // cancels the subscription: the server finishes and saves it either way,
       // so it is waiting in the conversation when the user comes back.
-      var delivered = false;
+
       await for (final event in store.api.ai.streamMessage(
         conversationId: id,
         content: text,
+        speak: speak,
+        voice: preferredVoice,
       )) {
         if (!mounted) return;
         switch (event.kind) {
@@ -841,6 +881,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
           case AiEventKind.done:
             final turn = event.turn!;
             delivered = true;
+            speechOpen = speak;
             // The live bubble hands over to the saved one in the same frame,
             // or the answer would briefly appear twice.
             setState(() {
@@ -848,12 +889,25 @@ class _ConversationScreenState extends State<ConversationScreen> {
               pendingActions = turn.pendingActions;
               streamingText = '';
               activeTools = const [];
+              clipsPending = speak;
             });
             _scrollToEnd();
-          case AiEventKind.transcript ||
-              AiEventKind.audio ||
-              AiEventKind.audioError:
-            // Voice-only events; a typed turn never receives them.
+          case AiEventKind.audio:
+            if (!speechOpen || event.audio == null) break;
+            final clip = base64Decode(event.audio!);
+            clips.add(clip);
+            if (event.last) speechOpen = false;
+            if (playback == replyTurn) {
+              setState(() {
+                lastReply = List.unmodifiable(clips);
+                if (event.last) clipsPending = false;
+              });
+              _enqueueClip(clip);
+            }
+          case AiEventKind.audioError:
+            speechOpen = false;
+            _speechFailed(playback);
+          case AiEventKind.transcript:
             break;
           case AiEventKind.error:
             throw ApiException(
@@ -871,9 +925,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
           code: 'AI_STREAM_INCOMPLETE',
         );
       }
+      if (speechOpen) _speechFailed(playback);
       unawaited(_loadQuota());
     } catch (error) {
       if (!mounted) return;
+      if (delivered) {
+        _speechFailed(playback);
+        return;
+      }
       // Drop the optimistic bubble so the user can edit and retry.
       setState(() => messages = messages.sublist(0, messages.length - 1));
       input.text = text;
@@ -1041,8 +1100,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// Switching hands-free off mid-call should hand control back immediately,
   /// not after the turn in flight finishes.
   Future<void> _setHandsFree(bool value) async {
+    if (!mounted) return;
     setState(() {
       handsFree = value;
+      if (value) callMode = true;
       voiceError = null;
     });
     final store = StoreScope.read(context);
@@ -1056,6 +1117,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (!recording && !sending && !recorderBusy && retryAudioPath == null) {
       await _toggleVoice();
     }
+  }
+
+  Future<void> _leaveCall() async {
+    await _setHandsFree(false);
+    await _stopReply();
+    if (mounted) setState(() => callMode = false);
   }
 
   Future<void> _setMuted(bool value) async {
@@ -1150,10 +1217,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Future<void> _playSample(String voice) async {
     final store = StoreScope.read(context);
     try {
+      if (handsFree) await _setHandsFree(false);
+      if (recording) await _cancelRecording();
       await _stopReply();
       final clip = await store.api.ai.voicePreview(voice);
       if (clip == null || !mounted) return;
-      await player.play(BytesSource(clip));
+      await _playClip(clip);
     } catch (_) {
       if (mounted) _flashNotice('That sample could not be played.');
     }
@@ -1219,7 +1288,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final clip = clipQueue.removeAt(0);
     setState(() => clipPlaying = true);
     try {
-      await player.play(BytesSource(clip));
+      await _playClip(clip);
     } catch (_) {
       if (!mounted || turn != replyTurn) return;
       setState(() {
@@ -1238,6 +1307,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// One piece finished: play the next, or — once the whole reply has been
   /// heard — hand the turn back. A piece still on its way starts itself.
   void _onClipComplete() {
+    _clearSpeechFile();
     setState(() => clipPlaying = false);
     if (clipQueue.isNotEmpty) {
       unawaited(_playNextClip());
@@ -1254,6 +1324,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     clipPlaying = false;
     if (mounted) setState(() {});
     await player.stop();
+    _clearSpeechFile();
   }
 
   Future<void> _replay() async {
@@ -1270,7 +1341,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (!mounted || playback != replyTurn) return;
     setState(() => clipsPending = false);
     _flashNotice(
-      'Audio playback is unavailable. You can read the reply below.',
+      callMode
+          ? 'Audio playback is unavailable. Open the conversation to read the reply.'
+          : 'Audio playback is unavailable. You can read the reply below.',
     );
     if (!clipPlaying && clipQueue.isEmpty) _afterReply();
   }
@@ -1581,19 +1654,36 @@ class _ConversationScreenState extends State<ConversationScreen> {
       return Backdrop(
         child: Scaffold(
           appBar: AppBar(
-            title: Text(tr('Voice with {name}', {'name': store.assistantName})),
+            title: Text(
+              callMode
+                  ? store.assistantName
+                  : tr('Voice with {name}', {'name': store.assistantName}),
+            ),
             actions: [
-              IconButton(
-                tooltip: tr('Chat history'),
-                onPressed:
-                    sending ||
-                        recording ||
-                        recorderBusy ||
-                        retryAudioPath != null
-                    ? null
-                    : () => scaffold.currentState?.openEndDrawer(),
-                icon: const Icon(Icons.history_rounded),
-              ),
+              if (callMode) ...[
+                IconButton(
+                  tooltip: tr('Show conversation'),
+                  onPressed: () => unawaited(_leaveCall()),
+                  icon: const Icon(Icons.chat_bubble_outline),
+                ),
+                IconButton(
+                  tooltip: tr('Voice'),
+                  onPressed: () => unawaited(_pickVoice()),
+                  icon: const Icon(Icons.tune),
+                ),
+              ],
+              if (!callMode)
+                IconButton(
+                  tooltip: tr('Chat history'),
+                  onPressed:
+                      sending ||
+                          recording ||
+                          recorderBusy ||
+                          retryAudioPath != null
+                      ? null
+                      : () => scaffold.currentState?.openEndDrawer(),
+                  icon: const Icon(Icons.history_rounded),
+                ),
             ],
           ),
           key: scaffold,
@@ -1601,6 +1691,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
           body: SafeArea(
             top: false,
             child: VoiceExperience(
+              minimal: callMode,
+              proposals: _pendingCards(),
+              onClose: () => unawaited(_leaveCall()),
               recording: recording,
               busy: recorderBusy || loading,
               sending: sending,
@@ -2225,6 +2318,29 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }, success: item.saved ? 'Chat will age out again' : 'Chat kept');
   }
 
+  Future<void> _deleteAllHistory(AppStore store) async {
+    final approved = await confirm(
+      context,
+      'Delete all chat history?',
+      'Permanently delete every conversation, including saved chats? Your calendar events will stay.',
+      action: 'Delete all',
+      danger: true,
+    );
+    if (!approved || !mounted) return;
+    await runAction(context, () async {
+      await store.api.ai.deleteAllConversations();
+      store.clearConversations();
+      if (!mounted) return;
+      setState(() {
+        conversationId = null;
+        messages = [];
+        pendingActions = [];
+        lastReply = const [];
+        title = 'New chat';
+      });
+    }, success: 'Chat history deleted');
+  }
+
   Widget _historyDrawer(AppStore store) {
     final needle = historyQuery.toLowerCase();
     final items = store.conversations
@@ -2249,6 +2365,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 onTap: () {
                   Navigator.pop(context);
                   unawaited(_downloadAll(store));
+                },
+              ),
+            if (store.conversations.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Delete all history'),
+                onTap: () {
+                  Navigator.pop(context);
+                  unawaited(_deleteAllHistory(store));
                 },
               ),
             ListTile(

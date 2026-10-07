@@ -1024,6 +1024,11 @@ class AppStore extends ChangeNotifier {
 
   // --- AI ----------------------------------------------------------------
 
+  void clearConversations() {
+    conversations = [];
+    notifyListeners();
+  }
+
   Future<void> loadConversations({String? search}) async {
     final epoch = _accountEpoch;
     final loaded = await api.ai.conversations(search: search);

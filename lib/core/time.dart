@@ -43,6 +43,10 @@ DateTime combine(DateTime day, TimeOfDay time) =>
 DateTime startOfDay(DateTime value) =>
     DateTime(value.year, value.month, value.day);
 
+/// Today stays editable for the whole day; only earlier dates are locked.
+bool isPastDay(DateTime value, {DateTime? now}) =>
+    startOfDay(value).isBefore(startOfDay(now ?? DateTime.now()));
+
 DateTime endOfDay(DateTime value) =>
     DateTime(value.year, value.month, value.day, 23, 59, 59, 999);
 

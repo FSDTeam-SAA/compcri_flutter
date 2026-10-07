@@ -4,6 +4,29 @@
 const Map<String, Map<String, String>> translations = {'pt': _pt, 'es': _es};
 
 const _pt = <String, String>{
+  'Past dates are view-only. Choose today or a future date.':
+      'Datas passadas são apenas para consulta. Escolha hoje ou uma data futura.',
+  'Audio playback is unavailable. Open the conversation to read the reply.':
+      'A reprodução de áudio está indisponível. Abra a conversa para ler a resposta.',
+  'Past dates are view-only': 'Datas passadas são apenas para consulta',
+  'You can view past dates, but can’t add or move events.':
+      'Você pode consultar datas passadas, mas não pode adicionar ou mover eventos.',
+  'Ask {name}…': 'Pergunte a {name}…',
+  'Mute microphone': 'Silenciar microfone',
+  'Resume hands-free': 'Retomar modo mãos livres',
+  'End call': 'Encerrar chamada',
+  'Show conversation': 'Mostrar conversa',
+  'Delete all history': 'Excluir todo o histórico',
+  'Delete all chat history?': 'Excluir todo o histórico de conversas?',
+  'Permanently delete every conversation, including saved chats? Your calendar events will stay.':
+      'Excluir permanentemente todas as conversas, incluindo as salvas? Seus eventos do calendário serão mantidos.',
+  'Delete all': 'Excluir tudo',
+  'Chat history deleted': 'Histórico de conversas excluído',
+  'Past date — adding disabled': 'Data passada — adição desativada',
+  'Switch to today or a future date to add events.':
+      'Mude para hoje ou uma data futura para adicionar eventos.',
+  'You can view this event, but past dates cannot be edited.':
+      'Você pode consultar este evento, mas datas passadas não podem ser editadas.',
   'Switch calendar': 'Trocar calendário',
   'My Calendar': 'Meu calendário',
   'Creating events is not permitted': 'Não é permitido criar eventos',
@@ -939,6 +962,29 @@ const _pt = <String, String>{
 };
 
 const _es = <String, String>{
+  'Past dates are view-only. Choose today or a future date.':
+      'Las fechas pasadas son solo de consulta. Elige hoy o una fecha futura.',
+  'Audio playback is unavailable. Open the conversation to read the reply.':
+      'La reproducción de audio no está disponible. Abre la conversación para leer la respuesta.',
+  'Past dates are view-only': 'Las fechas pasadas son solo de consulta',
+  'You can view past dates, but can’t add or move events.':
+      'Puedes consultar fechas pasadas, pero no puedes añadir ni mover eventos.',
+  'Ask {name}…': 'Pregunta a {name}…',
+  'Mute microphone': 'Silenciar micrófono',
+  'Resume hands-free': 'Reanudar manos libres',
+  'End call': 'Finalizar llamada',
+  'Show conversation': 'Mostrar conversación',
+  'Delete all history': 'Eliminar todo el historial',
+  'Delete all chat history?': '¿Eliminar todo el historial de chats?',
+  'Permanently delete every conversation, including saved chats? Your calendar events will stay.':
+      '¿Eliminar permanentemente todas las conversaciones, incluidas las guardadas? Tus eventos del calendario se conservarán.',
+  'Delete all': 'Eliminar todo',
+  'Chat history deleted': 'Historial de chats eliminado',
+  'Past date — adding disabled': 'Fecha pasada — adición desactivada',
+  'Switch to today or a future date to add events.':
+      'Cambia a hoy o a una fecha futura para añadir eventos.',
+  'You can view this event, but past dates cannot be edited.':
+      'Puedes consultar este evento, pero las fechas pasadas no se pueden editar.',
   'Switch calendar': 'Cambiar calendario',
   'My Calendar': 'Mi calendario',
   'Creating events is not permitted': 'No está permitido crear eventos',

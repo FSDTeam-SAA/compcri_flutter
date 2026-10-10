@@ -85,6 +85,10 @@ void main() {
         find.widgetWithText(TextFormField, 'Add notes about your event...'),
         'Native API verification',
       );
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Remind me'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Remind me'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Before event'));
@@ -181,6 +185,10 @@ void main() {
       expect(tester.takeException(), isNull);
       ownerApi.client.close();
       guestApi.client.close();
+      await tester.pumpWidget(const SizedBox.shrink());
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
     },
   );
 }

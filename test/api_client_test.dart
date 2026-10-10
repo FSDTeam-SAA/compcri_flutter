@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:compcri_flutter/core/i18n.dart';
 
 import 'package:compcri_flutter/core/api.dart';
 import 'package:compcri_flutter/core/api_client.dart';
@@ -18,6 +19,46 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test(
+    'previews reuse downloads, separate languages and retry errors',
+    () async {
+      var requests = 0;
+      final ai = AiApi(
+        ApiClient(
+          client: MockClient((_) async {
+            requests++;
+            if (requests == 1) {
+              return http.Response(
+                errorBody('AI_AUDIO_UNAVAILABLE', 'Unavailable'),
+                503,
+              );
+            }
+            return http.Response(
+              ok({
+                'base64': base64Encode([73, 68, 51]),
+              }),
+              200,
+            );
+          }),
+        ),
+      );
+      await I18n.apply('en');
+      addTearDown(() => I18n.apply('en'));
+      await expectLater(ai.voicePreview('nova'), throwsA(isA<ApiException>()));
+      final clips = await Future.wait([
+        ai.voicePreview('nova'),
+        ai.voicePreview('nova'),
+      ]);
+      expect(requests, 2);
+      expect(clips[0], clips[1]);
+      await ai.voicePreview('nova');
+      expect(requests, 2);
+      await I18n.apply('pt');
+      await ai.voicePreview('nova');
+      expect(requests, 3);
+    },
+  );
 
   test('unwraps the success envelope', () async {
     final client = ApiClient(

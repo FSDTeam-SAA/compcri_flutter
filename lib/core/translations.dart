@@ -352,12 +352,22 @@ const _pt = <String, String>{
   "{name}'s voice": 'Voz da {name}',
   'Applies to the next spoken reply.':
       'Vale a partir da próxima resposta falada.',
+  'Male · Even and measured': 'Masculina · Serena e ponderada',
+  'Male · Deep and grounded': 'Masculina · Profunda e segura',
+  'Female · Crisp and energetic': 'Feminina · Nítida e enérgica',
+  'Female · Light and airy': 'Feminina · Leve e suave',
+  'I did not hear any speech. Tap the mic, wait for Listening, then speak.':
+      'Não ouvi nenhuma fala. Toque no microfone, espere aparecer Ouvindo você e então fale.',
   'Play sample': 'Ouvir amostra',
   'That sample could not be played.': 'Não foi possível reproduzir a amostra.',
   'App default': 'Padrão do app',
   'Whatever the server is configured with': 'A voz configurada no servidor',
   'Could not cancel recording. Please try again.':
       'Não foi possível cancelar a gravação. Tente novamente.',
+  'Could not start speech detection. Please try again, or type below.':
+      'Não foi possível iniciar a detecção de fala. Tente novamente ou digite abaixo.',
+  'Could not detect speech. Tap the mic to try again, or type below.':
+      'Não foi possível detectar fala. Toque no microfone para tentar novamente ou digite abaixo.',
   'Audio playback is unavailable. You can read the reply below.':
       'Não foi possível reproduzir o áudio. Você pode ler a resposta abaixo.',
   'Transcript unavailable for this recording.':
@@ -455,6 +465,11 @@ const _pt = <String, String>{
   'Use microphone': 'Usar microfone',
   'Type instead': 'Digitar',
   'Send recording': 'Enviar gravação',
+  'Send now': 'Enviar agora',
+  'Microphone paused. Tap Resume hands-free when you are ready.':
+      'Microfone pausado. Toque em Retomar mãos livres quando estiver pronto.',
+  'Retry your recording, or send a typed message instead.':
+      'Tente enviar a gravação novamente ou envie uma mensagem escrita.',
   'Start recording': 'Começar a gravar',
   'Working…': 'Processando…',
   'One moment': 'Um momento',
@@ -1312,12 +1327,22 @@ const _es = <String, String>{
   "{name}'s voice": 'Voz de {name}',
   'Applies to the next spoken reply.':
       'Se aplica a la próxima respuesta hablada.',
+  'Male · Even and measured': 'Masculina · Serena y pausada',
+  'Male · Deep and grounded': 'Masculina · Profunda y segura',
+  'Female · Crisp and energetic': 'Femenina · Clara y enérgica',
+  'Female · Light and airy': 'Femenina · Ligera y suave',
+  'I did not hear any speech. Tap the mic, wait for Listening, then speak.':
+      'No oí ninguna voz. Toca el micrófono, espera a que aparezca Escuchándote y luego habla.',
   'Play sample': 'Reproducir muestra',
   'That sample could not be played.': 'No se pudo reproducir la muestra.',
   'App default': 'Predeterminada de la app',
   'Whatever the server is configured with': 'La voz configurada en el servidor',
   'Could not cancel recording. Please try again.':
       'No se pudo cancelar la grabación. Inténtalo de nuevo.',
+  'Could not start speech detection. Please try again, or type below.':
+      'No se pudo iniciar la detección de voz. Inténtalo de nuevo o escribe abajo.',
+  'Could not detect speech. Tap the mic to try again, or type below.':
+      'No se pudo detectar la voz. Toca el micrófono para intentarlo de nuevo o escribe abajo.',
   'Audio playback is unavailable. You can read the reply below.':
       'No se puede reproducir el audio. Puedes leer la respuesta abajo.',
   'Transcript unavailable for this recording.':
@@ -1415,6 +1440,11 @@ const _es = <String, String>{
   'Use microphone': 'Usar micrófono',
   'Type instead': 'Escribir',
   'Send recording': 'Enviar grabación',
+  'Send now': 'Enviar ahora',
+  'Microphone paused. Tap Resume hands-free when you are ready.':
+      'Micrófono pausado. Toca Reanudar manos libres cuando estés listo.',
+  'Retry your recording, or send a typed message instead.':
+      'Vuelve a enviar la grabación o envía un mensaje escrito.',
   'Start recording': 'Empezar a grabar',
   'Working…': 'Procesando…',
   'One moment': 'Un momento',

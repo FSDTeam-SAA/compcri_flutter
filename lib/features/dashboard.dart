@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:clock/clock.dart' as time_source;
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -10,11 +11,12 @@ import 'package:record/record.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../core/api_client.dart';
-import '../core/config.dart';
 import '../core/design.dart';
 import '../core/markdown.dart';
 import '../core/store.dart';
 import '../core/time.dart';
+import '../core/voice_activity.dart';
+import '../core/speech_monitor.dart';
 import 'calendar.dart';
 import 'calendar_switcher.dart';
 import 'conflicts.dart';
@@ -492,12 +494,14 @@ class ConversationScreen extends StatefulWidget {
     this.showHistory = false,
     this.audioPath,
     this.voiceMode = false,
+    this.speechMonitorFactory = SpeechMonitor.create,
   });
 
   final String? prompt;
   final String? conversationId;
   final bool showHistory;
   final bool voiceMode;
+  final SpeechMonitorFactory speechMonitorFactory;
 
   /// A recording captured on the voice screen, sent as the opening turn.
   final String? audioPath;
@@ -528,6 +532,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
   bool started = false;
   bool recording = false;
   bool recorderBusy = false;
+
+  /// Leaving a call invalidates both permission requests and native starts.
+  int recordingGeneration = 0;
+  Completer<void>? recordingStartup;
   bool speaking = false;
   bool mutedAudio = false;
   String? voiceError;
@@ -575,32 +583,22 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// it holds the microphone open between turns.
   bool handsFree = false;
   bool callMode = false;
-  String? preferredVoice;
+  String preferredVoice = AriaVoice.defaultId;
 
   /// Guards the auto-listen hop so a late playback event cannot start a second
   /// recorder after the user has already left or switched off.
   bool autoListenQueued = false;
 
-  /// Silence tracking for the current recording. [heardSpeech] stops a silent
-  /// room from ending the turn before the user has said anything.
-  bool heardSpeech = false;
-  double silenceSeconds = 0;
+  VoiceActivity? voiceActivity;
+  Stopwatch? recordingClock;
+  Timer? voiceActivityTimer;
+  SpeechMonitor? speechMonitor;
   AiQuota? quota;
-
-  /// Ends a turn once the user has been quiet this long after speaking.
-  static const _silenceToEndTurn = Duration(milliseconds: 1800);
-
-  /// Gives up on a hands-free turn nobody spoke into, so the loop does not
-  /// hold the microphone forever.
-  static const _silenceToGiveUp = Duration(seconds: 12);
 
   /// Hard cap on one recording. The server rejects uploads over
   /// `OPENAI_VOICE_MAX_FILE_MB`; stopping first turns a failed upload into a
   /// sent turn.
   static const _maxRecording = Duration(minutes: 2);
-
-  /// dBFS-normalised level above which we treat the input as speech.
-  static const _speechThreshold = 0.28;
 
   @override
   void initState() {
@@ -608,7 +606,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
     conversationId = widget.conversationId;
 
     playbackSubscription = player.onPlayerStateChanged.listen((state) {
-      if (mounted) setState(() => speaking = state == PlayerState.playing);
+      if (!mounted) return;
+      setState(() => speaking = state == PlayerState.playing);
+      if (!speaking) _afterReply();
     });
     // The reply finishing is the cue to listen again; PlayerState alone does
     // not distinguish "finished" from "stopped by the user".
@@ -658,26 +658,34 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// AVPlayer needs a recognizable file type, also on older iOS releases.
   /// Reclaim the playback session after recording, and check cancellation
   /// before resuming so leaving a call never starts late audio.
-  Future<void> _playClip(Uint8List clip) async {
-    final token = replyTurn;
+  Future<void> _playClip(Uint8List clip, {int? expectedTurn}) async {
+    final token = expectedTurn ?? replyTurn;
     final directory = await getTemporaryDirectory();
     if (!mounted || token != replyTurn) return;
     final file = File(
       '${directory.path}/aurox-speech-${DateTime.now().microsecondsSinceEpoch}.mp3',
     );
     speechFiles.add(file.path);
-    await file.writeAsBytes(clip, flush: true);
-    if (!mounted || token != replyTurn) {
-      await _deleteAudio(file.path);
-      speechFiles.remove(file.path);
-      return;
+    var retained = false;
+    try {
+      await file.writeAsBytes(clip, flush: true);
+      if (!mounted || token != replyTurn) return;
+      await _prepareAudioSession();
+      if (!mounted || token != replyTurn) return;
+      await player.setSource(
+        DeviceFileSource(file.path, mimeType: 'audio/mpeg'),
+      );
+      if (!mounted || token != replyTurn) return;
+      currentSpeechFile = file.path;
+      await player.resume();
+      retained = mounted && token == replyTurn;
+    } finally {
+      if (!retained) {
+        if (currentSpeechFile == file.path) currentSpeechFile = null;
+        await _deleteAudio(file.path);
+        speechFiles.remove(file.path);
+      }
     }
-    await _prepareAudioSession();
-    if (!mounted || token != replyTurn) return;
-    await player.setSource(DeviceFileSource(file.path, mimeType: 'audio/mpeg'));
-    if (!mounted || token != replyTurn) return;
-    currentSpeechFile = file.path;
-    await player.resume();
   }
 
   void _clearSpeechFile() {
@@ -700,7 +708,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         // A remembered preference never starts the microphone without a tap.
         handsFree = false;
         mutedAudio = prefs.muted;
-        preferredVoice = prefs.voice;
+        preferredVoice = AriaVoice.resolve(prefs.voice);
       });
     } catch (_) {
       // Keep the defaults.
@@ -746,25 +754,36 @@ class _ConversationScreenState extends State<ConversationScreen> {
     // Stop the loop before tearing down, so no queued hop outlives the screen.
     handsFree = false;
     autoListenQueued = false;
+    recordingGeneration++;
+    replyTurn++;
     input.dispose();
     scroll.dispose();
-    recordingTimer?.cancel();
+    _stopMeter();
     noticeTimer?.cancel();
-    amplitudeSubscription?.cancel();
     playbackSubscription?.cancel();
     completionSubscription?.cancel();
-    if (recording) unawaited(recorder.cancel());
+    final startup = recordingStartup;
+    unawaited(
+      () async {
+        try {
+          if (startup != null) await startup.future;
+          await speechMonitor?.dispose();
+          if (recording) await recorder.cancel();
+        } finally {
+          await recorder.dispose();
+        }
+      }().catchError((_) {}),
+    );
     final unsent = retryAudioPath;
     if (unsent != null) unawaited(_deleteAudio(unsent));
     unawaited(
       player.dispose().whenComplete(() async {
-        for (final path in speechFiles) {
+        for (final path in speechFiles.toList()) {
           await _deleteAudio(path);
         }
         speechFiles.clear();
       }),
     );
-    recorder.dispose();
     super.dispose();
   }
 
@@ -817,9 +836,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (value.trim().isEmpty || sending) return;
     if (handsFree) {
       await _setHandsFree(false);
-    } else if (recording) {
+    } else if (recording || recordingStartup != null) {
       await _cancelRecording();
     }
+    if (!mounted) return;
+    // Sending typed text is an explicit choice to replace a failed recording.
+    // Keep that recording while editing a draft, then release it on submission.
+    if (retryAudioPath != null) await _discardAudio();
     if (!mounted) return;
     await _send(value);
   }
@@ -836,10 +859,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
     final store = StoreScope.read(context);
     input.clear();
-    if (widget.voiceMode || replySounding) await _stopReply();
-    if (!mounted) return;
     final speak = widget.voiceMode && !mutedAudio;
-    final playback = replyTurn;
     final clips = <Uint8List>[];
     var speechOpen = false;
     var delivered = false;
@@ -853,8 +873,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
       ];
     });
     _scrollToEnd();
+    final stopped = widget.voiceMode || replySounding
+        ? _stopReply()
+        : Future<void>.value();
+    final playback = replyTurn;
 
     try {
+      await stopped;
+      if (!mounted) return;
       final id = await _ensureConversation(store);
       if (id == null) {
         throw StateError('No calendar is available yet. Please try again.');
@@ -889,7 +915,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
               pendingActions = turn.pendingActions;
               streamingText = '';
               activeTools = const [];
-              clipsPending = speak;
+              clipsPending = speak && playback == replyTurn;
             });
             _scrollToEnd();
           case AiEventKind.audio:
@@ -950,6 +976,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
           streamingText = '';
           activeTools = const [];
         });
+        if (delivered) _afterReply();
       }
     }
   }
@@ -964,12 +991,17 @@ class _ConversationScreenState extends State<ConversationScreen> {
       await _discardAudio();
       if (!mounted) return;
     }
+    final starting = !recording;
+    final generation = starting ? ++recordingGeneration : recordingGeneration;
+    final startup = starting ? Completer<void>() : null;
+    if (startup != null) recordingStartup = startup;
     setState(() {
       recorderBusy = true;
       voiceError = null;
     });
     try {
       if (recording) {
+        await speechMonitor?.stop();
         final path = await recorder.stop();
         _stopMeter();
         if (!mounted) {
@@ -977,33 +1009,110 @@ class _ConversationScreenState extends State<ConversationScreen> {
           return;
         }
         setState(() => recording = false);
+        if (generation != recordingGeneration) {
+          if (path != null) await _deleteAudio(path);
+          return;
+        }
         if (path == null) {
           throw StateError('No recording was captured. Please try again.');
         }
         await _sendVoice(path);
       } else {
         await _stopReply();
-        if (!await recorder.hasPermission()) {
+        if (!mounted || generation != recordingGeneration) return;
+        final permitted = await recorder.hasPermission();
+        if (!mounted || generation != recordingGeneration) return;
+        if (!permitted) {
           throw StateError(
             'Allow microphone access in your device settings, or type your message below.',
           );
         }
-        if (!mounted) return;
         final directory = await getTemporaryDirectory();
-        if (!mounted) return;
+        if (!mounted || generation != recordingGeneration) return;
+        try {
+          speechMonitor ??= await widget.speechMonitorFactory();
+        } catch (_) {
+          throw StateError(
+            'Could not start speech detection. Please try again, or type below.',
+          );
+        }
+        if (!mounted || generation != recordingGeneration) return;
         final path =
-            '${directory.path}/aurox-${DateTime.now().microsecondsSinceEpoch}.m4a';
-        await recorder.start(speechRecordConfig, path: path);
-        if (!mounted) {
+            '${directory.path}/aurox-${DateTime.now().microsecondsSinceEpoch}.wav';
+        await recorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.wav,
+            sampleRate: 16000,
+            numChannels: 1,
+            echoCancel: true,
+            noiseSuppress: true,
+            iosConfig: IosRecordConfig(
+              allowHapticsAndSystemSoundsDuringRecording: true,
+            ),
+          ),
+          path: path,
+        );
+        if (!mounted || generation != recordingGeneration) {
           await recorder.cancel();
+          await _deleteAudio(path);
           return;
         }
         setState(() {
           recording = true;
           recordingSeconds = 0;
           soundLevel = 0;
-          heardSpeech = false;
-          silenceSeconds = 0;
+          voiceActivity = VoiceActivity();
+          recordingClock = time_source.clock.stopwatch()..start();
+        });
+        await speechMonitor!.start(
+          path,
+          (probability, audioTime) {
+            if (!mounted || !recording || generation != recordingGeneration) {
+              return;
+            }
+            final decision = voiceActivity?.add(
+              probability,
+              audioTime,
+              finishTurn: handsFree,
+            );
+            if (decision != null) {
+              _handleVoiceDecision(decision);
+            }
+          },
+          () {
+            if (!mounted || !recording || generation != recordingGeneration) {
+              return;
+            }
+            unawaited(
+              _setHandsFree(false).then((_) {
+                if (mounted) {
+                  setState(
+                    () => voiceError =
+                        'Could not detect speech. Tap the mic to try again, or type below.',
+                  );
+                }
+              }),
+            );
+          },
+        );
+        if (!mounted || generation != recordingGeneration) {
+          await speechMonitor?.stop();
+          await recorder.cancel();
+          await _deleteAudio(path);
+          if (mounted) setState(() => recording = false);
+          return;
+        }
+        voiceActivityTimer = Timer.periodic(const Duration(milliseconds: 100), (
+          _,
+        ) {
+          if (!mounted || !recording || !handsFree) return;
+          final activity = voiceActivity;
+          final elapsed = recordingClock?.elapsed;
+          if (activity == null || elapsed == null) return;
+          final wasReady = activity.ready;
+          final decision = activity.poll(elapsed);
+          if (wasReady != activity.ready) setState(() {});
+          _handleVoiceDecision(decision);
         });
         recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
           if (!mounted) return;
@@ -1020,25 +1129,47 @@ class _ConversationScreenState extends State<ConversationScreen> {
               if (!mounted) return;
               final level = ((value.current + 55) / 55).clamp(0.0, 1.0);
               setState(() => soundLevel = level);
-              if (handsFree) _watchForPause(level);
             }, onError: (_) {});
       }
     } catch (error) {
-      if (mounted) {
-        setState(() => voiceError = '$error'.replaceFirst('Bad state: ', ''));
+      if (starting && recording) {
+        await speechMonitor?.stop();
+        try {
+          await recorder.cancel();
+        } catch (_) {}
+        _stopMeter();
+      }
+      if (mounted && generation == recordingGeneration) {
+        setState(() {
+          if (starting) {
+            recording = false;
+            handsFree = false;
+          }
+          voiceError = '$error'.replaceFirst('Bad state: ', '');
+        });
       }
     } finally {
       if (mounted) setState(() => recorderBusy = false);
+      if (startup != null) {
+        if (identical(recordingStartup, startup)) recordingStartup = null;
+        startup.complete();
+      }
+      if (!starting) _afterReply();
     }
   }
 
   void _stopMeter() {
+    final monitor = speechMonitor;
+    if (monitor != null) unawaited(monitor.stop());
     recordingTimer?.cancel();
     recordingTimer = null;
     amplitudeSubscription?.cancel();
     amplitudeSubscription = null;
-    heardSpeech = false;
-    silenceSeconds = 0;
+    voiceActivityTimer?.cancel();
+    voiceActivityTimer = null;
+    recordingClock?.stop();
+    recordingClock = null;
+    voiceActivity = null;
   }
 
   /// Sends what was captured when a recording hits the length ceiling, then
@@ -1050,40 +1181,51 @@ class _ConversationScreenState extends State<ConversationScreen> {
     _flashNotice('That reached the longest recording I can send at once.');
   }
 
-  /// Ends a hands-free turn on a pause. Called once per amplitude tick, so the
-  /// counter advances by the sampling interval rather than by wall clock.
-  void _watchForPause(double level) {
-    if (!recording || recorderBusy || sending) return;
-    if (level >= _speechThreshold) {
-      heardSpeech = true;
-      silenceSeconds = 0;
-      return;
+  void _handleVoiceDecision(VoiceTurnDecision decision) {
+    if (!handsFree || !recording || recorderBusy || sending) return;
+    if (decision == VoiceTurnDecision.send) {
+      unawaited(_toggleVoice());
+    } else if (decision == VoiceTurnDecision.pause) {
+      unawaited(_pauseForSilence());
     }
-    silenceSeconds += 0.1;
-    // Someone who has spoken gets a short pause; an empty room gets a long one
-    // before the loop lets go of the microphone.
-    if (heardSpeech) {
-      if (silenceSeconds >= _silenceToEndTurn.inMilliseconds / 1000) {
-        unawaited(_toggleVoice());
-      }
-    } else if (silenceSeconds >= _silenceToGiveUp.inSeconds) {
-      _flashNotice('I did not catch anything. Tap the mic when you are ready.');
-      unawaited(_cancelRecording());
-    }
+  }
+
+  Future<void> _pauseForSilence() async {
+    await _setHandsFree(false);
+    if (!mounted) return;
+    _flashNotice(
+      'Microphone paused. Tap Resume hands-free when you are ready.',
+    );
   }
 
   /// Runs when a spoken reply finishes. In hands-free mode this is what makes
   /// the exchange feel like a call instead of a walkie-talkie.
   void _afterReply() {
     if (!handsFree || !mounted) return;
-    if (autoListenQueued || recording || sending || recorderBusy) return;
+    if (autoListenQueued ||
+        recording ||
+        sending ||
+        recorderBusy ||
+        speaking ||
+        clipPlaying ||
+        clipsPending ||
+        clipQueue.isNotEmpty) {
+      return;
+    }
     autoListenQueued = true;
     // A beat of silence between the reply ending and the microphone opening
     // stops the tail of the reply bleeding into the next recording.
     Future<void>.delayed(const Duration(milliseconds: 400), () async {
       autoListenQueued = false;
       if (!mounted || !handsFree) return;
-      if (recording || sending || recorderBusy || retryAudioPath != null) {
+      if (recording ||
+          sending ||
+          recorderBusy ||
+          retryAudioPath != null ||
+          speaking ||
+          clipPlaying ||
+          clipsPending ||
+          clipQueue.isNotEmpty) {
         return;
       }
       if (quota?.exhausted ?? false) {
@@ -1110,7 +1252,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     unawaited(store.api.client.store.setHandsFree(value));
     if (!value) {
       autoListenQueued = false;
-      if (recording) await _cancelRecording();
+      await _cancelRecording();
       return;
     }
     // Turning it on is itself the "start the call" gesture.
@@ -1120,9 +1262,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _leaveCall() async {
-    await _setHandsFree(false);
-    await _stopReply();
+    final stopped = _stopReply();
     if (mounted) setState(() => callMode = false);
+    await _setHandsFree(false);
+    await stopped;
   }
 
   Future<void> _setMuted(bool value) async {
@@ -1131,6 +1274,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     unawaited(store.api.client.store.setMuted(value));
     if (value) {
       await _stopReply();
+      _afterReply();
     }
   }
 
@@ -1140,98 +1284,57 @@ class _ConversationScreenState extends State<ConversationScreen> {
     // Read before the sheet opens: inside its builder the only context is the
     // sheet's own, which sits outside this screen's StoreScope.
     final assistant = StoreScope.read(context).assistantName;
-    final chosen = await showModalBottomSheet<String?>(
+    if (handsFree) await _setHandsFree(false);
+    if (recording || recordingStartup != null) await _cancelRecording();
+    await _stopReply();
+    if (!mounted) return;
+    final chosen = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (sheetContext) => SafeArea(
-        child: DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: .7,
-          maxChildSize: .9,
-          builder: (_, controller) => RadioGroup<String?>(
-            groupValue: preferredVoice,
-            onChanged: (value) => Navigator.pop(sheetContext, value),
-            child: ListView(
-              controller: controller,
-              padding: const EdgeInsets.fromLTRB(8, 18, 8, 12),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                  child: Text(
-                    tr("{name}'s voice", {'name': assistant}),
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Text(
-                    'Applies to the next spoken reply.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppPalette.of(context).muted,
-                    ),
-                  ),
-                ),
-                const RadioListTile<String?>(
-                  value: null,
-                  title: Text('App default'),
-                  subtitle: Text('Whatever the server is configured with'),
-                ),
-                for (final voice in AriaVoice.all)
-                  RadioListTile<String?>(
-                    value: voice.id,
-                    title: Text(voice.label),
-                    subtitle: Text(voice.tone),
-                    // Choosing a voice blind meant starting a whole turn to
-                    // hear one. The sample is held server-side, so listening
-                    // through the list costs nothing.
-                    secondary: IconButton(
-                      tooltip: tr('Play sample'),
-                      onPressed: () => unawaited(_playSample(voice.id)),
-                      icon: const Icon(Icons.play_circle_outline),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
+      builder: (sheetContext) => VoicePicker(
+        assistantName: assistant,
+        selectedVoice: preferredVoice,
+        onPreview: _playSample,
+        onSelect: (voice) => Navigator.pop(sheetContext, voice),
       ),
     );
     if (!mounted) return;
-    // A dismissed sheet returns null, which is also "App default" — compare
-    // against the value that was showing to tell the two apart.
-    if (chosen == preferredVoice) return;
+    await _stopReply();
+    if (!mounted || chosen == null || chosen == preferredVoice) return;
     setState(() => preferredVoice = chosen);
     final store = StoreScope.read(context);
     unawaited(store.api.client.store.setVoice(chosen));
   }
 
-  /// Plays one voice's sample. Quiet about failure: a sample that will not
-  /// load is a reason to pick another voice, not an error to interrupt with.
+  /// A pending sample belongs to the picker that requested it. Closing it,
+  /// choosing another sample, or starting the mic invalidates that request.
   Future<void> _playSample(String voice) async {
     final store = StoreScope.read(context);
-    try {
-      if (handsFree) await _setHandsFree(false);
-      if (recording) await _cancelRecording();
-      await _stopReply();
-      final clip = await store.api.ai.voicePreview(voice);
-      if (clip == null || !mounted) return;
-      await _playClip(clip);
-    } catch (_) {
-      if (mounted) _flashNotice('That sample could not be played.');
+    if (handsFree) await _setHandsFree(false);
+    if (recording || recordingStartup != null) await _cancelRecording();
+    final stopped = _stopReply();
+    final token = replyTurn;
+    await stopped;
+    if (!mounted || token != replyTurn) return;
+    final clip = await store.api.ai.voicePreview(voice);
+    if (!mounted || token != replyTurn || recording) return;
+    if (clip == null || clip.isEmpty) {
+      throw StateError('That sample could not be played.');
     }
+    await _playClip(clip, expectedTurn: token);
   }
 
   Future<void> _cancelRecording() async {
-    if (recorderBusy) return;
+    recordingGeneration++;
+    final startup = recordingStartup;
+    if (startup != null) await startup.future;
+    if (!mounted || recorderBusy || !recording) return;
     setState(() => recorderBusy = true);
     try {
+      await speechMonitor?.stop();
       await recorder.cancel();
       _stopMeter();
       if (mounted) {
@@ -1322,9 +1425,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
     clipQueue.clear();
     clipsPending = false;
     clipPlaying = false;
+    final path = currentSpeechFile;
+    currentSpeechFile = null;
     if (mounted) setState(() {});
     await player.stop();
-    _clearSpeechFile();
+    if (path != null) {
+      speechFiles.remove(path);
+      await _deleteAudio(path);
+    }
   }
 
   Future<void> _replay() async {
@@ -1366,12 +1474,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final placeholder = 'voice-${DateTime.now().microsecondsSinceEpoch}';
     final transcriptId = '$placeholder-transcript';
     final turn = ++voiceTurn;
-    // A AppPalette.of(context).muted turn asks the server not to synthesize anything at all.
+    // A muted turn asks the server not to synthesize anything at all.
     final speak = !mutedAudio;
     final clips = <Uint8List>[];
     var delivered = false;
     var speechOpen = false;
-    var playback = -1;
     setState(() {
       sending = true;
       transcribed = false;
@@ -1388,9 +1495,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
         ),
       ];
     });
-    unawaited(_stopReply());
     _scrollToEnd();
+    final stopped = _stopReply();
+    final playback = replyTurn;
     try {
+      await stopped;
+      if (!mounted) return;
       final id = await _ensureConversation(store);
       if (id == null) {
         throw StateError(
@@ -1428,7 +1538,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
             final reply = event.turn!;
             delivered = true;
             speechOpen = speak;
-            playback = replyTurn;
             // The live bubble hands over to the saved one in the same frame.
             // The turn is over as far as the controls go; its audio follows.
             setState(() {
@@ -1445,7 +1554,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
               activeTools = const [];
               sending = false;
               transcribed = false;
-              clipsPending = speechOpen;
+              clipsPending = speechOpen && playback == replyTurn;
             });
             _scrollToEnd();
             unawaited(_loadQuota());
@@ -1494,7 +1603,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
         retryAudioPath = path;
         retryWasEmpty =
             error is ApiException && error.code == 'AUDIO_NO_SPEECH';
-        voiceError = error is ApiException
+        if (retryWasEmpty) retryAudioPath = null;
+        voiceError = retryWasEmpty
+            ? 'I did not hear any speech. Tap the mic, wait for Listening, then speak.'
+            : error is ApiException
             ? error.message
             : '$error'.replaceFirst('Bad state: ', '');
         // A failed turn should not silently re-open the microphone; the
@@ -1516,7 +1628,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
               .toList();
         });
       }
-      if (delivered || !mounted) await _deleteAudio(path);
+      if (delivered || retryWasEmpty || !mounted) await _deleteAudio(path);
+      if (delivered && mounted && turn == voiceTurn) _afterReply();
     }
   }
 
@@ -1691,11 +1804,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
           body: SafeArea(
             top: false,
             child: VoiceExperience(
+              keyboardOpen: MediaQuery.viewInsetsOf(context).bottom > 0,
               minimal: callMode,
               proposals: _pendingCards(),
               onClose: () => unawaited(_leaveCall()),
-              recording: recording,
-              busy: recorderBusy || loading,
+              recording:
+                  recording && (!handsFree || voiceActivity?.ready == true),
+              busy:
+                  recorderBusy ||
+                  loading ||
+                  (handsFree && recording && voiceActivity?.ready != true),
               sending: sending,
               transcribed: transcribed,
               speaking: replySounding,
@@ -1708,7 +1826,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
               canReplay: lastReply.isNotEmpty,
               error: voiceError,
               handsFree: handsFree,
-              voiceLabel: AriaVoice.find(preferredVoice)?.label ?? 'Voice',
+              voiceLabel: AriaVoice.find(preferredVoice).label,
               allowance: quota == null
                   ? null
                   : tr('{count} LEFT TODAY', {'count': quota!.remaining}),

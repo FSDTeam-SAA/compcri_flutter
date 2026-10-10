@@ -1,22 +1,41 @@
 PODS:
   - Flutter (1.0.0)
+  - onnxruntime-c (1.22.0)
+  - onnxruntime-objc (1.22.0):
+    - onnxruntime-objc/Core (= 1.22.0)
+  - onnxruntime-objc/Core (1.22.0):
+    - onnxruntime-c (= 1.22.0)
   - sign_in_with_apple (0.0.1):
     - Flutter
+  - vad (0.0.6):
+    - Flutter
+    - onnxruntime-objc (= 1.22.0)
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
   - sign_in_with_apple (from `.symlinks/plugins/sign_in_with_apple/ios`)
+  - vad (from `.symlinks/plugins/vad/ios`)
+
+SPEC REPOS:
+  trunk:
+    - onnxruntime-c
+    - onnxruntime-objc
 
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
   sign_in_with_apple:
     :path: ".symlinks/plugins/sign_in_with_apple/ios"
+  vad:
+    :path: ".symlinks/plugins/vad/ios"
 
 SPEC CHECKSUMS:
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+  onnxruntime-c: 7f778680e96145956c0a31945f260321eed2611a
+  onnxruntime-objc: 83d28b87525bd971259a66e153ea32b5d023de19
   sign_in_with_apple: c5dcc141574c8c54d5ac99dd2163c0c72ad22418
+  vad: 7934867589afe53567f492df66fb1615f2185822
 
-PODFILE CHECKSUM: 53a6aebc29ccee84c41f92f409fc20cd4ca011f1
+PODFILE CHECKSUM: aa138be8409ad2ab7f70f36aee65b237099b922e
 
 COCOAPODS: 1.16.2

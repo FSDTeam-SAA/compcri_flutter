@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart' hide Text;
 import '../core/design.dart';
 import '../core/i18n.dart';
+import '../core/models.dart';
 
 /// Presentation for voice conversations; recording and messages belong to the
 /// conversation controller so switching input methods never loses the thread.
@@ -39,6 +40,7 @@ class VoiceExperience extends StatefulWidget {
     this.allowance,
     this.allowanceLow = false,
     this.minimal = false,
+    this.keyboardOpen = false,
     this.proposals = const SizedBox.shrink(),
     this.onClose,
   });
@@ -79,6 +81,7 @@ class VoiceExperience extends StatefulWidget {
   final ScrollController scroll;
   final Widget messages;
   final bool minimal;
+  final bool keyboardOpen;
   final Widget proposals;
   final VoidCallback? onClose;
 
@@ -95,6 +98,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
     final duration = reduce ? Duration.zero : const Duration(milliseconds: 220);
     final disabled = widget.busy || widget.sending;
     if (widget.minimal) return _callView(disabled);
+    final keyboardOpen = widget.keyboardOpen;
     final status = widget.recording
         ? 'Listening to you'
         : widget.sending
@@ -131,231 +135,245 @@ class _VoiceExperienceState extends State<VoiceExperience> {
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
-            children: [
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppPalette.of(
-                        context,
-                      ).surface.withValues(alpha: .8),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+            children: keyboardOpen
+                ? [widget.messages]
+                : [
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
-                        Icon(
-                          widget.recording
-                              ? Icons.mic_rounded
-                              : widget.handsFree
-                              ? Icons.phone_in_talk_rounded
-                              : Icons.auto_awesome_rounded,
-                          size: 14,
-                          color: AppPalette.of(context).accent,
-                        ),
-                        const SizedBox(width: 7),
-                        Text(
-                          widget.recording
-                              ? tr('LISTENING · {time}', {
-                                  'time':
-                                      '${widget.seconds ~/ 60}:${(widget.seconds % 60).toString().padLeft(2, '0')}',
-                                })
-                              : widget.sending
-                              ? 'ONE MOMENT'
-                              : widget.speaking
-                              ? 'SPEAKING'
-                              : widget.handsFree
-                              ? 'HANDS-FREE'
-                              : 'YOUR VOICE ASSISTANT',
-                          style: TextStyle(
-                            color: AppPalette.of(context).accent,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 7,
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (widget.allowance != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: widget.allowanceLow
-                            ? AppPalette.of(
-                                context,
-                              ).wash(const Color(0xfffdeaf0))
-                            : AppPalette.of(
-                                context,
-                              ).surface.withValues(alpha: .8),
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      child: Text(
-                        widget.allowance!,
-                        style: TextStyle(
-                          color: widget.allowanceLow
-                              ? AppPalette.of(
-                                  context,
-                                ).foreground(const Color(0xffa33f5c))
-                              : AppPalette.of(context).muted,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Center(
-                child: SizedBox(
-                  height: widget.hasMessages ? 134 : 190,
-                  child: FittedBox(
-                    child: VoiceOrb(
-                      size: widget.hasMessages ? 134 : 190,
-                      active: widget.recording,
-                      onTap: disabled || widget.hasRetry
-                          ? null
-                          : widget.onRecord,
-                    ),
-                  ),
-                ),
-              ),
-              AnimatedSwitcher(
-                duration: duration,
-                child: Text(
-                  status,
-                  key: ValueKey(status),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppPalette.of(context).ink,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    height: 1.25,
-                    letterSpacing: -.5,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                hint,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppPalette.of(context).muted,
-                  fontSize: 12,
-                  height: 1.6,
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 34,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(25, (i) {
-                    final weight = .25 + .75 * math.sin((i + 1) * 2.4).abs();
-                    return AnimatedContainer(
-                      duration: duration,
-                      width: 4,
-                      height: widget.recording
-                          ? 5 + widget.level * weight * 29
-                          : 4 + math.sin(i * .7).abs() * 5,
-                      margin: const EdgeInsets.symmetric(horizontal: 2),
-                      decoration: BoxDecoration(
-                        color: violet.withValues(
-                          alpha: widget.recording ? .85 : .22,
-                        ),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    );
-                  }),
-                ),
-              ),
-              const SizedBox(height: 22),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Our conversation',
-                      style: TextStyle(
-                        color: AppPalette.of(context).ink,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  if (widget.canReplay && !widget.recording && !widget.sending)
-                    IconButton(
-                      tooltip: tr(
-                        widget.speaking ? 'Stop reply' : 'Replay reply',
-                      ),
-                      onPressed: widget.onReplay,
-                      icon: Icon(
-                        widget.speaking
-                            ? Icons.stop_circle_outlined
-                            : Icons.volume_up_outlined,
-                        color: AppPalette.of(context).accent,
-                        size: 21,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (!widget.hasMessages)
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: AppPalette.of(context).surface.withValues(alpha: .8),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: violet.withValues(alpha: .1)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Not sure where to start?',
-                        style: TextStyle(
-                          color: AppPalette.of(context).ink,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      for (final suggestion in [
-                        'Plan my day',
-                        'Help me schedule a meeting',
-                      ])
-                        TextButton(
-                          onPressed: disabled || widget.recording
-                              ? null
-                              : () => widget.controller.text = tr(suggestion),
+                          decoration: BoxDecoration(
+                            color: AppPalette.of(
+                              context,
+                            ).surface.withValues(alpha: .8),
+                            borderRadius: BorderRadius.circular(30),
+                          ),
                           child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.north_west_rounded, size: 15),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  suggestion,
-                                  style: const TextStyle(fontSize: 12),
+                              Icon(
+                                widget.recording
+                                    ? Icons.mic_rounded
+                                    : widget.handsFree
+                                    ? Icons.phone_in_talk_rounded
+                                    : Icons.auto_awesome_rounded,
+                                size: 14,
+                                color: AppPalette.of(context).accent,
+                              ),
+                              const SizedBox(width: 7),
+                              Text(
+                                widget.recording
+                                    ? tr('LISTENING · {time}', {
+                                        'time':
+                                            '${widget.seconds ~/ 60}:${(widget.seconds % 60).toString().padLeft(2, '0')}',
+                                      })
+                                    : widget.sending
+                                    ? 'ONE MOMENT'
+                                    : widget.speaking
+                                    ? 'SPEAKING'
+                                    : widget.handsFree
+                                    ? 'HANDS-FREE'
+                                    : 'YOUR VOICE ASSISTANT',
+                                style: TextStyle(
+                                  color: AppPalette.of(context).accent,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                    ],
-                  ),
-                )
-              else
-                widget.messages,
-            ],
+                        if (widget.allowance != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: widget.allowanceLow
+                                  ? AppPalette.of(
+                                      context,
+                                    ).wash(const Color(0xfffdeaf0))
+                                  : AppPalette.of(
+                                      context,
+                                    ).surface.withValues(alpha: .8),
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: Text(
+                              widget.allowance!,
+                              style: TextStyle(
+                                color: widget.allowanceLow
+                                    ? AppPalette.of(
+                                        context,
+                                      ).foreground(const Color(0xffa33f5c))
+                                    : AppPalette.of(context).muted,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Center(
+                      child: SizedBox(
+                        height: widget.hasMessages ? 134 : 190,
+                        child: FittedBox(
+                          child: VoiceOrb(
+                            size: widget.hasMessages ? 134 : 190,
+                            active: widget.recording,
+                            onTap: disabled || widget.hasRetry
+                                ? null
+                                : widget.onRecord,
+                          ),
+                        ),
+                      ),
+                    ),
+                    AnimatedSwitcher(
+                      duration: duration,
+                      child: Text(
+                        status,
+                        key: ValueKey(status),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: AppPalette.of(context).ink,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          height: 1.25,
+                          letterSpacing: -.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      hint,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppPalette.of(context).muted,
+                        fontSize: 12,
+                        height: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 34,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(25, (i) {
+                          final weight =
+                              .25 + .75 * math.sin((i + 1) * 2.4).abs();
+                          return AnimatedContainer(
+                            duration: duration,
+                            width: 4,
+                            height: widget.recording
+                                ? 5 + widget.level * weight * 29
+                                : 4 + math.sin(i * .7).abs() * 5,
+                            margin: const EdgeInsets.symmetric(horizontal: 2),
+                            decoration: BoxDecoration(
+                              color: violet.withValues(
+                                alpha: widget.recording ? .85 : .22,
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Our conversation',
+                            style: TextStyle(
+                              color: AppPalette.of(context).ink,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        if (widget.canReplay &&
+                            !widget.recording &&
+                            !widget.sending)
+                          IconButton(
+                            tooltip: tr(
+                              widget.speaking ? 'Stop reply' : 'Replay reply',
+                            ),
+                            onPressed: widget.onReplay,
+                            icon: Icon(
+                              widget.speaking
+                                  ? Icons.stop_circle_outlined
+                                  : Icons.volume_up_outlined,
+                              color: AppPalette.of(context).accent,
+                              size: 21,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (!widget.hasMessages)
+                      Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: AppPalette.of(
+                            context,
+                          ).surface.withValues(alpha: .8),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: violet.withValues(alpha: .1),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Not sure where to start?',
+                              style: TextStyle(
+                                color: AppPalette.of(context).ink,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            for (final suggestion in [
+                              'Plan my day',
+                              'Help me schedule a meeting',
+                            ])
+                              TextButton(
+                                onPressed: disabled || widget.recording
+                                    ? null
+                                    : () => widget.controller.text = tr(
+                                        suggestion,
+                                      ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.north_west_rounded,
+                                      size: 15,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        suggestion,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      )
+                    else
+                      widget.messages,
+                  ],
           ),
         ),
         if (widget.error != null)
@@ -382,37 +400,41 @@ class _VoiceExperienceState extends State<VoiceExperience> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _CallChip(
-                      icon: widget.handsFree
-                          ? Icons.phone_in_talk_rounded
-                          : Icons.record_voice_over_outlined,
-                      label: widget.handsFree
-                          ? 'Hands-free on'
-                          : 'Hands-free off',
-                      selected: widget.handsFree,
-                      // Mid-turn is the one time flipping this would fight the
-                      // recorder, so it waits until the turn settles.
-                      onTap: widget.sending || widget.hasRetry
-                          ? null
-                          : () => widget.onHandsFree(!widget.handsFree),
+              if (!keyboardOpen) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: _CallChip(
+                        icon: widget.handsFree
+                            ? Icons.phone_in_talk_rounded
+                            : Icons.record_voice_over_outlined,
+                        label: widget.handsFree
+                            ? 'Hands-free on'
+                            : 'Hands-free off',
+                        selected: widget.handsFree,
+                        onTap:
+                            !widget.handsFree && (disabled || widget.hasRetry)
+                            ? null
+                            : () => widget.onHandsFree(!widget.handsFree),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _CallChip(
-                      icon: Icons.graphic_eq_rounded,
-                      label: widget.voiceLabel,
-                      selected: false,
-                      onTap: disabled ? null : widget.onPickVoice,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _CallChip(
+                        icon: Icons.graphic_eq_rounded,
+                        label: widget.voiceLabel,
+                        selected: false,
+                        onTap: disabled ? null : widget.onPickVoice,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              if (widget.hasRetry)
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (widget.hasRetry) ...[
+                const Text(
+                  'Retry your recording, or send a typed message instead.',
+                ),
                 Row(
                   children: [
                     Expanded(
@@ -428,129 +450,127 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                       ),
                     ),
                   ],
-                )
-              else
-                // Always on screen. Typing used to be behind a toggle that sat
-                // next to "Tap to talk" doing the same job from the other
-                // direction, which read as two buttons for one decision; the
-                // three ways in — typing, tapping, hands-free — are now each
-                // visible at once.
-                TextField(
-                  controller: widget.controller,
-                  // Left enabled on purpose: disabling a field iOS is holding
-                  // the keyboard for leaves that keyboard stranded on screen.
-                  // See the composer in dashboard.dart.
-                  minLines: 1,
-                  maxLines: 3,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: widget.onSend,
-                  decoration: InputDecoration(
-                    hintText: tr('Type your message…'),
-                    suffixIcon: IconButton(
-                      tooltip: tr('Send message'),
-                      onPressed: widget.sending
-                          ? null
-                          : () => widget.onSend(widget.controller.text),
-                      icon: Icon(
-                        Icons.arrow_upward_rounded,
-                        color: AppPalette.of(context).accent,
-                      ),
-                    ),
-                  ),
                 ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  // Only ever a way out of a recording now. The keyboard needs
-                  // no button of its own, and the width is held either way so
-                  // the talk button does not shift under the thumb.
-                  SizedBox(
-                    width: 48,
-                    child: widget.recording
-                        ? IconButton(
-                            tooltip: tr('Cancel recording'),
-                            onPressed: disabled ? null : widget.onCancel,
-                            icon: Icon(
-                              Icons.close_rounded,
-                              color: AppPalette.of(context).muted,
+              ],
+              TextField(
+                controller: widget.controller,
+                // Left enabled on purpose: disabling a field iOS is holding
+                // the keyboard for leaves that keyboard stranded on screen.
+                // See the composer in dashboard.dart.
+                minLines: 1,
+                maxLines: 3,
+                textInputAction: TextInputAction.send,
+                onSubmitted: widget.sending ? null : widget.onSend,
+                decoration: InputDecoration(
+                  hintText: tr('Type your message…'),
+                  suffixIcon: _sendButton('Send message'),
+                ),
+              ),
+              if (!keyboardOpen) ...[
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    // Only ever a way out of a recording now. The keyboard needs
+                    // no button of its own, and the width is held either way so
+                    // the talk button does not shift under the thumb.
+                    SizedBox(
+                      width: 48,
+                      child: widget.recording
+                          ? IconButton(
+                              tooltip: tr('Cancel recording'),
+                              onPressed: disabled ? null : widget.onCancel,
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: AppPalette.of(context).muted,
+                              ),
+                            )
+                          : null,
+                    ),
+                    Semantics(
+                      button: true,
+                      label: widget.recording
+                          ? tr('Send recording')
+                          : tr('Start recording'),
+                      child: SizedBox(
+                        width: 160,
+                        height: 56,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: violet,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                          )
-                        : null,
-                  ),
-                  Semantics(
-                    button: true,
-                    label: widget.recording
-                        ? tr('Send recording')
-                        : tr('Start recording'),
-                    child: SizedBox(
-                      width: 160,
-                      height: 56,
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: violet,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          onPressed:
+                              disabled ||
+                                  (widget.hasRetry && !widget.retryIsEmpty)
+                              ? null
+                              : widget.onRecord,
+                          icon: widget.sending && !reduce
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Icon(
+                                  !widget.recording
+                                      ? Icons.mic_rounded
+                                      : Icons.arrow_upward_rounded,
+                                ),
+                          label: Text(
+                            widget.sending
+                                ? 'Working…'
+                                : widget.busy
+                                ? 'One moment'
+                                : widget.recording
+                                ? 'Send now'
+                                : 'Tap to talk',
                           ),
                         ),
-                        onPressed:
-                            disabled ||
-                                (widget.hasRetry && !widget.retryIsEmpty)
-                            ? null
-                            : widget.onRecord,
-                        icon: widget.sending && !reduce
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Icon(
-                                !widget.recording
-                                    ? Icons.mic_rounded
-                                    // Hands-free sends on a pause by itself, so
-                                    // pressing this stops it listening rather
-                                    // than sending — an arrow would promise
-                                    // the wrong thing.
-                                    : widget.handsFree
-                                    ? Icons.pause_rounded
-                                    : Icons.arrow_upward_rounded,
-                              ),
-                        label: Text(
-                          widget.sending
-                              ? 'Working…'
-                              : widget.busy
-                              ? 'One moment'
-                              : widget.recording
-                              ? (widget.handsFree ? 'Pause' : 'Send')
-                              : 'Tap to talk',
-                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: widget.muted
-                        ? tr('Enable spoken replies')
-                        : tr('Mute spoken replies'),
-                    onPressed: widget.onMute,
-                    icon: Icon(
-                      widget.muted
-                          ? Icons.volume_off_outlined
-                          : Icons.volume_up_outlined,
-                      color: AppPalette.of(context).muted,
+                    IconButton(
+                      tooltip: widget.muted
+                          ? tr('Enable spoken replies')
+                          : tr('Mute spoken replies'),
+                      onPressed: widget.onMute,
+                      icon: Icon(
+                        widget.muted
+                            ? Icons.volume_off_outlined
+                            : Icons.volume_up_outlined,
+                        color: AppPalette.of(context).muted,
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
       ],
     );
   }
+
+  Widget _sendButton(String label) => ValueListenableBuilder<TextEditingValue>(
+    valueListenable: widget.controller,
+    builder: (context, value, _) => IconButton(
+      tooltip: tr(label),
+      onPressed: widget.sending || value.text.trim().isEmpty
+          ? null
+          : () => widget.onSend(value.text),
+      icon: Icon(
+        Icons.arrow_upward_rounded,
+        color: widget.sending || value.text.trim().isEmpty
+            ? AppPalette.of(context).muted
+            : AppPalette.of(context).accent,
+      ),
+    ),
+  );
 
   Widget _callView(bool disabled) => Column(
     children: [
@@ -565,12 +585,18 @@ class _VoiceExperienceState extends State<VoiceExperience> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  VoiceOrb(
-                    size: math.min(330, math.max(160, box.maxWidth - 48)),
-                    active: widget.recording || widget.speaking,
-                    onTap: disabled ? null : widget.onRecord,
-                  ),
-                  const SizedBox(height: 20),
+                  if (!widget.keyboardOpen) ...[
+                    VoiceOrb(
+                      size: math.min(330, math.max(160, box.maxWidth - 48)),
+                      active: widget.recording || widget.speaking,
+                      onTap: disabled
+                          ? null
+                          : widget.recording
+                          ? widget.onRecord
+                          : () => widget.onHandsFree(true),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                   Text(
                     widget.recording
                         ? 'Listening to you'
@@ -580,6 +606,8 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                           })
                         : widget.sending
                         ? 'Working on your message'
+                        : widget.busy
+                        ? 'One moment'
                         : 'Tap the mic to talk',
                     textAlign: TextAlign.center,
                     style: TextStyle(
@@ -612,7 +640,14 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                         ),
                       ],
                     ),
-                  widget.proposals,
+                  if (widget.hasMessages &&
+                      (widget.keyboardOpen ||
+                          !widget.handsFree ||
+                          widget.muted ||
+                          widget.error != null))
+                    widget.messages
+                  else
+                    widget.proposals,
                 ],
               ),
             ),
@@ -628,19 +663,10 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                 key: const ValueKey('hands-free-text'),
                 controller: widget.controller,
                 textInputAction: TextInputAction.send,
-                onSubmitted: disabled ? null : widget.onSend,
+                onSubmitted: widget.sending ? null : widget.onSend,
                 decoration: InputDecoration(
                   hintText: tr('Ask {name}…', {'name': widget.assistantName}),
-                  suffixIcon: IconButton(
-                    tooltip: tr('Send'),
-                    onPressed: disabled
-                        ? null
-                        : () => widget.onSend(widget.controller.text),
-                    icon: Icon(
-                      Icons.arrow_upward,
-                      color: AppPalette.of(context).accent,
-                    ),
-                  ),
+                  suffixIcon: _sendButton('Send'),
                 ),
               ),
             ),
@@ -649,7 +675,7 @@ class _VoiceExperienceState extends State<VoiceExperience> {
               tooltip: widget.handsFree
                   ? tr('Mute microphone')
                   : tr('Resume hands-free'),
-              onPressed: disabled
+              onPressed: !widget.handsFree && (disabled || widget.hasRetry)
                   ? null
                   : () => widget.onHandsFree(!widget.handsFree),
               icon: Icon(widget.handsFree ? Icons.mic : Icons.mic_off),
@@ -734,4 +760,105 @@ class _CallChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Samples report their progress and errors inside the open picker.
+class VoicePicker extends StatefulWidget {
+  const VoicePicker({
+    super.key,
+    required this.assistantName,
+    required this.selectedVoice,
+    required this.onPreview,
+    required this.onSelect,
+  });
+  final String assistantName, selectedVoice;
+  final Future<void> Function(String) onPreview;
+  final ValueChanged<String> onSelect;
+
+  @override
+  State<VoicePicker> createState() => _VoicePickerState();
+}
+
+class _VoicePickerState extends State<VoicePicker> {
+  String? loadingVoice, error;
+  int request = 0;
+
+  Future<void> preview(String voice) async {
+    final token = ++request;
+    setState(() {
+      loadingVoice = voice;
+      error = null;
+    });
+    try {
+      await widget.onPreview(voice);
+    } catch (_) {
+      if (mounted && token == request) {
+        setState(() => error = 'That sample could not be played.');
+      }
+    } finally {
+      if (mounted && token == request) setState(() => loadingVoice = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(8, 18, 8, 12),
+      child: RadioGroup<String>(
+        groupValue: widget.selectedVoice,
+        onChanged: (voice) {
+          if (voice != null) widget.onSelect(voice);
+        },
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  tr("{name}'s voice", {'name': widget.assistantName}),
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Text('Applies to the next spoken reply.'),
+              ),
+              for (final voice in AriaVoice.all)
+                RadioListTile<String>(
+                  value: voice.id,
+                  title: Text(voice.label),
+                  subtitle: Text(voice.tone),
+                  secondary: loadingVoice == voice.id
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : IconButton(
+                          tooltip: tr('Play sample'),
+                          onPressed: () => preview(voice.id),
+                          icon: const Icon(Icons.play_circle_outline),
+                        ),
+                ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }

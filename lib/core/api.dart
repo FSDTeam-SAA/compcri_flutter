@@ -667,7 +667,25 @@ class AiApi {
 
   /// A short spoken sample of one voice. The server keeps these, so listening
   /// through the list costs nothing after the first time anyone does.
+  final _voicePreviews = <String, Future<Uint8List?>>{};
+
   Future<Uint8List?> voicePreview(String voice) async {
+    final key = '$voice:${I18n.locale}';
+    final cached = _voicePreviews[key];
+    if (cached != null) return cached;
+    final request = _fetchVoicePreview(voice);
+    _voicePreviews[key] = request;
+    try {
+      final clip = await request;
+      if (clip == null || clip.isEmpty) _voicePreviews.remove(key);
+      return clip;
+    } catch (_) {
+      _voicePreviews.remove(key);
+      rethrow;
+    }
+  }
+
+  Future<Uint8List?> _fetchVoicePreview(String voice) async {
     final body = _map(await _client.get('/ai/voices/$voice/preview'));
     final encoded = body['base64'];
     if (encoded is! String || encoded.isEmpty) return null;

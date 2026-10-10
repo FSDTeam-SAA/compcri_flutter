@@ -1166,42 +1166,32 @@ class AiQuota {
   bool get low => limit > 0 && remaining > 0 && remaining <= 3;
 }
 
-/// A spoken voice the API accepts for replies, mirroring the backend's
-/// `OPENAI_TTS_VOICES` enum. Sending an id outside this list is rejected by
-/// the server's schema, so the picker is the single source of truth.
-///
-/// Tone hints are approximate — they exist to make 13 rows distinguishable,
-/// not to promise an exact character.
+/// The four reply voices supported by every configured speech model.
 class AriaVoice {
   const AriaVoice(this.id, this.label, this.tone);
 
   final String id, label, tone;
-
+  static const defaultId = 'nova';
   static const all = <AriaVoice>[
-    AriaVoice('alloy', 'Alloy', 'Balanced and neutral'),
-    AriaVoice('ash', 'Ash', 'Low and steady'),
-    AriaVoice('ballad', 'Ballad', 'Warm and unhurried'),
-    AriaVoice('coral', 'Coral', 'Bright and friendly'),
-    AriaVoice('echo', 'Echo', 'Even and measured'),
-    AriaVoice('fable', 'Fable', 'Expressive storyteller'),
-    AriaVoice('onyx', 'Onyx', 'Deep and grounded'),
-    AriaVoice('nova', 'Nova', 'Crisp and energetic'),
-    AriaVoice('sage', 'Sage', 'Calm and thoughtful'),
-    AriaVoice('shimmer', 'Shimmer', 'Light and airy'),
-    AriaVoice('verse', 'Verse', 'Natural and conversational'),
-    AriaVoice('marin', 'Marin', 'Soft and clear'),
-    AriaVoice('cedar', 'Cedar', 'Rounded and mellow'),
+    AriaVoice('echo', 'Echo', 'Male · Even and measured'),
+    AriaVoice('onyx', 'Onyx', 'Male · Deep and grounded'),
+    AriaVoice('nova', 'Nova', 'Female · Crisp and energetic'),
+    AriaVoice('shimmer', 'Shimmer', 'Female · Light and airy'),
   ];
 
-  /// Falls back to the first entry so a stored id from a future build never
-  /// leaves the picker without a selection.
-  static AriaVoice? find(String? id) {
-    if (id == null) return null;
-    for (final voice in all) {
-      if (voice.id == id) return voice;
-    }
-    return null;
+  /// Keep older installations on a supported voice when their choice retires.
+  static String resolve(String? id) {
+    if (all.any((voice) => voice.id == id)) return id!;
+    return switch (id) {
+      'ash' || 'ballad' || 'cedar' => 'onyx',
+      'fable' || 'verse' => 'echo',
+      'sage' || 'marin' => 'shimmer',
+      _ => defaultId,
+    };
   }
+
+  static AriaVoice find(String? id) =>
+      all.firstWhere((voice) => voice.id == resolve(id));
 }
 
 class SubscriptionInfo {

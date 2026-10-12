@@ -132,6 +132,27 @@ flutter test
 flutter analyze
 ```
 
+### iOS speech release check
+
+After exporting an IPA, verify the artifact before uploading it to TestFlight:
+
+```sh
+flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+python3 scripts/verify_ios_speech.py build/ios/ipa/compcri_flutter.ipa
+```
+
+The native detector loads `OrtGetApiBase` through Dart FFI. Debug tests alone
+cannot catch an archive that strips this entrypoint. The shared
+`ios/Flutter/SpeechRuntime.xcconfig` retains it; the artifact check requires both
+the exported symbol and the bundled Silero model.
+
+On the installed TestFlight build, check microphone permission, three spoken
+exchanges in one hands-free session, a silent pause followed by orb resume,
+leaving/reopening voice, and typing after cancelling voice. Confirm the build
+number before reporting these checks as passed. Also interrupt a recording with
+a phone call: Listening should end, captured audio should offer Retry/Discard,
+and listening should resume only after a tap.
+
 53 tests: transport behaviour (envelope, error codes, refresh-and-retry,
 single-flight refresh, expired-token restore), model parsing for every API
 document, and widget flows against a mock backend (session restore, sign-in,

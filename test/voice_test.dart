@@ -13,6 +13,7 @@ import 'package:compcri_flutter/core/store.dart';
 import 'package:compcri_flutter/features/dashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:record/record.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -42,6 +43,7 @@ void main() {
     }
   });
   final audioCalls = <MethodCall>[];
+  String? recorderEventChannel;
   setUp(() {
     // VoiceOrb animates continuously; motion is disabled for deterministic pumps.
 
@@ -104,6 +106,7 @@ void main() {
     Completer<void>? start,
     Completer<void>? stop,
     bool silent = false,
+    bool stopWithoutPath = false,
     double Function()? decibels,
   }) async {
     final calls = <String>[];
@@ -118,6 +121,7 @@ void main() {
         calls.add(call.method);
         if (call.method == 'create') {
           final id = (call.arguments as Map)['recorderId'];
+          recorderEventChannel = 'com.llfbandit.record/events/$id';
           messenger.setMockMethodCallHandler(
             MethodChannel('com.llfbandit.record/events/$id'),
             (_) async => null,
@@ -135,7 +139,7 @@ void main() {
         if (call.method == 'stop') {
           recording = false;
           if (stop != null) await stop.future;
-          return path;
+          return stopWithoutPath ? null : path;
         }
         if (call.method == 'cancel' && path != null) {
           recording = false;
@@ -199,6 +203,34 @@ void main() {
     200,
   );
 
+  List<Map<String, Object?>> voiceReply({
+    bool audio = false,
+    bool audioError = false,
+  }) => [
+    {
+      'type': 'transcript',
+      'transcription': {'text': 'What is on my calendar today?'},
+    },
+    {
+      'type': 'done',
+      'message': {
+        '_id': 'reply',
+        'role': 'ASSISTANT',
+        'content': 'No meetings today.',
+      },
+      'pendingActions': [],
+      'transcription': {'text': 'What is on my calendar today?'},
+    },
+    if (audio)
+      {
+        'type': 'audio',
+        'base64': base64Encode([73, 68, 51]),
+        'index': 0,
+        'last': true,
+      },
+    if (audioError) {'type': 'audio_error', 'message': 'Speech unavailable'},
+  ];
+
   testWidgets('a silent hands-free turn pauses the microphone and can resume', (
     tester,
   ) async {
@@ -227,68 +259,86 @@ void main() {
     expect(find.text('Listening to you'), findsOneWidget);
     expect(find.byTooltip('Mute microphone'), findsOneWidget);
   });
-  testWidgets(
-    'an unavailable speech model pauses hands-free and keeps typing usable',
-    (tester) async {
-      final calls = await mockRecorder();
+
+  for (final state in [RecordState.pause, RecordState.stop]) {
+    testWidgets('native ${state.name} ends listening and allows a fresh turn', (
+      tester,
+    ) async {
+      final calls = await mockRecorder(
+        stopWithoutPath: state == RecordState.stop,
+      );
+      var uploads = 0;
       await pumpHandsFree(
         tester,
-        MockClient((_) async => emptyThread()),
+        MockClient((request) async {
+          if (request.method == 'POST') {
+            uploads++;
+            return _events(voiceReply());
+          }
+          return emptyThread();
+        }),
+      );
+      expect(find.text('Listening to you'), findsOneWidget);
+      await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(
+            recorderEventChannel!,
+            const StandardMethodCodec().encodeSuccessEnvelope(state.index),
+            null,
+          );
+      await settleIO(tester);
+      expect(find.text('Listening to you'), findsNothing);
+      expect(find.byTooltip('Resume hands-free'), findsOneWidget);
+      expect(uploads, 0);
+      expect(find.text('Retry send'), findsOneWidget);
+      if (state == RecordState.pause) {
+        await tester.tap(find.text('Retry send'));
+        await settleIO(tester);
+        expect(uploads, 1);
+        await tester.pumpAndSettle();
+        expect(find.text('No meetings today.'), findsOneWidget);
+      } else {
+        await tester.tap(find.text('Discard recording'));
+      }
+      await settleIO(tester);
+      await tester.tap(find.byType(VoiceOrb));
+      await settleIO(tester);
+      expect(calls.where((method) => method == 'start'), hasLength(2));
+      expect(find.text('Listening to you'), findsOneWidget);
+    });
+  }
+  testWidgets(
+    'an unavailable speech model falls back to manual recording and sends it',
+    (tester) async {
+      final calls = await mockRecorder();
+      var uploads = 0;
+      await pumpHandsFree(
+        tester,
+        MockClient((request) async {
+          if (request.method == 'POST') {
+            uploads++;
+            return _events(voiceReply());
+          }
+          return emptyThread();
+        }),
         monitorFactory: () async =>
             throw StateError('native model unavailable'),
       );
-      expect(calls, isNot(contains('start')));
-      expect(find.byTooltip('Resume hands-free'), findsOneWidget);
+      expect(calls, contains('start'));
+      expect(find.text('Listening to you'), findsOneWidget);
       expect(
         find.text(
-          'Could not start speech detection. Please try again, or type below.',
+          'Automatic speech detection is unavailable. Speak, then tap Send now.',
         ),
         findsOneWidget,
       );
-      final field = find.byKey(const ValueKey('hands-free-text'));
-      await tester.enterText(field, 'Hello');
-      await tester.pump();
-      expect(
-        tester
-            .widget<IconButton>(
-              find.ancestor(
-                of: find.byTooltip('Send'),
-                matching: find.byType(IconButton),
-              ),
-            )
-            .onPressed,
-        isNotNull,
-      );
+      await tester.ensureVisible(find.text('Send now'));
+      await tester.tap(find.text('Send now'));
+      await settleIO(tester);
+      expect(uploads, 1);
+      expect(find.text('No meetings today.'), findsOneWidget);
+      expect(find.text('Listening to you'), findsNothing);
     },
   );
-
-  List<Map<String, Object?>> voiceReply({
-    bool audio = false,
-    bool audioError = false,
-  }) => [
-    {
-      'type': 'transcript',
-      'transcription': {'text': 'What is on my calendar today?'},
-    },
-    {
-      'type': 'done',
-      'message': {
-        '_id': 'reply',
-        'role': 'ASSISTANT',
-        'content': 'No meetings today.',
-      },
-      'pendingActions': [],
-      'transcription': {'text': 'What is on my calendar today?'},
-    },
-    if (audio)
-      {
-        'type': 'audio',
-        'base64': base64Encode([73, 68, 51]),
-        'index': 0,
-        'last': true,
-      },
-    if (audioError) {'type': 'audio_error', 'message': 'Speech unavailable'},
-  ];
 
   testWidgets(
     'hands-free sends after speech returns to noisy room levels without a tap',
@@ -332,6 +382,79 @@ void main() {
       await settleIO(tester);
     },
   );
+
+  for (final emitFirstFrames in [false, true]) {
+    testWidgets(
+      'detector ${emitFirstFrames ? 'stall' : 'missing frames'} preserves a sendable recording',
+      (tester) async {
+        final calls = await mockRecorder();
+        var uploads = 0;
+        await pumpHandsFree(
+          tester,
+          MockClient((request) async {
+            if (request.method == 'POST') {
+              uploads++;
+              return _events(voiceReply());
+            }
+            return emptyThread();
+          }),
+          monitorFactory: () async => _StalledSpeechMonitor(emitFirstFrames),
+        );
+        for (var i = 0; i < 45; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        await settleIO(tester);
+        expect(uploads, 0);
+        expect(calls, isNot(contains('cancel')));
+        expect(
+          find.text(
+            'Automatic speech detection is unavailable. Speak, then tap Send now.',
+          ),
+          findsOneWidget,
+        );
+        await tester.ensureVisible(find.text('Send now'));
+        await tester.tap(find.text('Send now'));
+        await settleIO(tester);
+        expect(uploads, 1);
+        await tester.pumpAndSettle();
+        expect(find.text('No meetings today.'), findsOneWidget);
+      },
+    );
+  }
+
+  for (final failAtStart in [true, false]) {
+    testWidgets(
+      'detector ${failAtStart ? 'startup' : 'runtime'} failure preserves a sendable recording',
+      (tester) async {
+        final calls = await mockRecorder();
+        var uploads = 0;
+        await pumpHandsFree(
+          tester,
+          MockClient((request) async {
+            if (request.method == 'POST') {
+              uploads++;
+              return _events(voiceReply());
+            }
+            return emptyThread();
+          }),
+          monitorFactory: () async => _BrokenSpeechMonitor(failAtStart),
+        );
+        expect(find.text('Listening to you'), findsOneWidget);
+        expect(calls.where((call) => call == 'start'), hasLength(1));
+        expect(
+          calls,
+          isNot(contains('cancel')),
+          reason: 'Detection failure must not discard the recording',
+        );
+        await tester.ensureVisible(find.text('Send now'));
+        await tester.tap(find.text('Send now'));
+        await settleIO(tester);
+        expect(uploads, 1);
+        await tester.pumpAndSettle();
+        expect(find.text('No meetings today.'), findsOneWidget);
+      },
+    );
+  }
 
   for (final muted in [true, false]) {
     testWidgets(
@@ -408,6 +531,158 @@ void main() {
     );
     expect(audioCalls.where((call) => call.method == 'setSourceUrl'), isEmpty);
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+    'a missing spoken answer can be replayed without resending the turn',
+    (tester) async {
+      final calls = await mockRecorder();
+      final posts = <String>[];
+      await pumpHandsFree(
+        tester,
+        MockClient((request) async {
+          if (request.method != 'POST') return emptyThread();
+          posts.add(request.url.path);
+          if (request.url.path.endsWith('/speech')) {
+            expect(
+              calls,
+              contains('cancel'),
+              reason:
+                  'Stop listening before playback reclaims the audio session',
+            );
+            return http.Response(
+              jsonEncode({
+                'success': true,
+                'data': {
+                  'clips': [
+                    {
+                      'base64': base64Encode([73, 68, 51]),
+                    },
+                    {
+                      'base64': base64Encode([73, 68, 51, 1]),
+                    },
+                  ],
+                },
+              }),
+              200,
+            );
+          }
+          return _events(voiceReply(audioError: true));
+        }),
+      );
+      await tester.tap(find.byType(VoiceOrb));
+      await settleIO(tester);
+      await tester.pump(const Duration(milliseconds: 600));
+      await settleIO(tester);
+      expect(find.text('Listening to you'), findsOneWidget);
+      await tester.ensureVisible(find.text('Replay reply'));
+      await tester.tap(find.text('Replay reply'));
+      await settleIO(tester);
+      expect(posts, [
+        '/api/v1/ai/conversations/thread/voice-messages/stream',
+        '/api/v1/ai/conversations/thread/messages/reply/speech',
+      ]);
+      expect(find.text('Listening to you'), findsNothing);
+      expect(audioCalls.where((call) => call.method == 'resume'), hasLength(1));
+      final id =
+          (audioCalls.firstWhere((call) => call.method == 'create').arguments
+              as Map)['playerId'];
+      await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(
+            'xyz.luan/audioplayers/events/$id',
+            const StandardMethodCodec().encodeSuccessEnvelope({
+              'event': 'audio.onComplete',
+            }),
+            null,
+          );
+      await settleIO(tester);
+      expect(audioCalls.where((call) => call.method == 'resume'), hasLength(2));
+      expect(
+        posts,
+        hasLength(2),
+        reason: 'Each replay clip uses the same saved answer',
+      );
+    },
+  );
+
+  testWidgets(
+    'ending a call while recovering speech suppresses the late audio',
+    (tester) async {
+      await mockRecorder();
+      final pending = Completer<http.Response>();
+      await pumpHandsFree(
+        tester,
+        MockClient((request) async {
+          if (request.url.path.endsWith('/speech')) return pending.future;
+          if (request.method == 'POST') {
+            return _events(voiceReply(audioError: true));
+          }
+          return emptyThread();
+        }),
+      );
+      await tester.tap(find.byType(VoiceOrb));
+      await settleIO(tester);
+      await tester.ensureVisible(find.text('Replay reply'));
+      await tester.tap(find.text('Replay reply'));
+      await settleIO(tester);
+      await tester.tap(find.byTooltip('End call'));
+      await settleIO(tester);
+      pending.complete(
+        http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'clips': [
+                {
+                  'base64': base64Encode([73, 68, 51]),
+                },
+              ],
+            },
+          }),
+          200,
+        ),
+      );
+      await settleIO(tester);
+      expect(audioCalls.where((call) => call.method == 'resume'), isEmpty);
+      expect(find.text('Listening to you'), findsNothing);
+    },
+  );
+
+  testWidgets('a late native playback error stops the loop and offers replay', (
+    tester,
+  ) async {
+    await mockRecorder();
+    await pumpHandsFree(
+      tester,
+      MockClient((request) async {
+        if (request.method == 'POST') return _events(voiceReply(audio: true));
+        return emptyThread();
+      }),
+    );
+    await tester.tap(find.byType(VoiceOrb));
+    await settleIO(tester);
+    expect(audioCalls.where((call) => call.method == 'resume'), hasLength(1));
+    final id =
+        (audioCalls.firstWhere((call) => call.method == 'create').arguments
+            as Map)['playerId'];
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          'xyz.luan/audioplayers/events/$id',
+          const StandardMethodCodec().encodeErrorEnvelope(
+            code: 'DarwinAudioError',
+            message: 'Playback interrupted',
+          ),
+          null,
+        );
+    await settleIO(tester);
+    expect(
+      find.text('Could not play the reply. Tap Replay reply to try again.'),
+      findsOneWidget,
+    );
+    expect(find.text('Replay reply'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Listening to you'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('ending a call cancels a microphone still starting', (
@@ -595,6 +870,12 @@ void main() {
       stop.complete();
       await settleIO(tester);
       expect(uploads, 1);
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('What is on my calendar today?'),
+        -100,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('What is on my calendar today?'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await settleIO(tester);
@@ -1338,4 +1619,39 @@ class _FakeSpeechMonitor implements SpeechMonitor {
 
   @override
   Future<void> dispose() => stop();
+}
+
+class _StalledSpeechMonitor extends _FakeSpeechMonitor {
+  _StalledSpeechMonitor(this.emitFirstFrames);
+  final bool emitFirstFrames;
+
+  @override
+  Future<void> start(
+    String path,
+    SpeechFrame onFrame,
+    void Function() onError,
+  ) async {
+    await stop();
+    if (!emitFirstFrames) return;
+    var elapsed = Duration.zero;
+    timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      elapsed += const Duration(milliseconds: 100);
+      onFrame(.95, elapsed);
+      if (elapsed >= const Duration(milliseconds: 800)) timer?.cancel();
+    });
+  }
+}
+
+class _BrokenSpeechMonitor extends _FakeSpeechMonitor {
+  _BrokenSpeechMonitor(this.failAtStart);
+  final bool failAtStart;
+  @override
+  Future<void> start(
+    String path,
+    SpeechFrame onFrame,
+    void Function() onError,
+  ) async {
+    if (failAtStart) throw StateError('Detector could not start');
+    await super.start(path, (_, _) => onError(), onError);
+  }
 }

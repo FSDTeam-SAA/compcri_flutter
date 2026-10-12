@@ -83,6 +83,8 @@ class AppStore extends ChangeNotifier {
   bool _eventsLoaded = false;
   int _eventRequest = 0;
   int _accountEpoch = 0;
+  int _conversationRevision = 0;
+  int _conversationRequest = 0;
 
   // --- derived views -----------------------------------------------------
 
@@ -1024,15 +1026,28 @@ class AppStore extends ChangeNotifier {
 
   // --- AI ----------------------------------------------------------------
 
+  void removeConversation(String id) {
+    ++_conversationRevision;
+    conversations = conversations.where((item) => item.id != id).toList();
+    notifyListeners();
+  }
+
   void clearConversations() {
+    ++_conversationRevision;
     conversations = [];
     notifyListeners();
   }
 
   Future<void> loadConversations({String? search}) async {
     final epoch = _accountEpoch;
+    final revision = _conversationRevision;
+    final request = ++_conversationRequest;
     final loaded = await api.ai.conversations(search: search);
-    if (epoch != _accountEpoch) return;
+    if (epoch != _accountEpoch ||
+        revision != _conversationRevision ||
+        request != _conversationRequest) {
+      return;
+    }
     conversations = loaded;
     notifyListeners();
   }

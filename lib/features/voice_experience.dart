@@ -574,54 +574,107 @@ class _VoiceExperienceState extends State<VoiceExperience> {
 
   Widget _callView(bool disabled) => Column(
     children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Row(
+          children: [
+            _OrbitButton(
+              tooltip: tr('Show conversation'),
+              icon: Icons.short_text_rounded,
+              onPressed: widget.onClose,
+              size: 40,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                children: [
+                  Text(
+                    widget.assistantName,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xfff8f5ff),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -.4,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  const Text(
+                    'Your AI Calendar Assistant',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xffb4aaff), fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            _OrbitButton(
+              tooltip: tr('Voice'),
+              icon: Icons.tune_rounded,
+              onPressed: widget.onPickVoice,
+              size: 40,
+            ),
+          ],
+        ),
+      ),
       Expanded(
         child: LayoutBuilder(
           builder: (context, box) => SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                minHeight: math.max(0, box.maxHeight - 24),
+                minHeight: math.max(0, box.maxHeight - 16),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if (!widget.keyboardOpen) ...[
-                    VoiceOrb(
-                      size: math.min(330, math.max(160, box.maxWidth - 48)),
-                      active: widget.recording || widget.speaking,
-                      onTap: disabled
-                          ? null
-                          : widget.recording
-                          ? widget.onRecord
-                          : () => widget.onHandsFree(true),
+                  VoiceOrb(
+                    size: math.min(
+                      math.min(360, box.maxWidth * .76),
+                      math.max(150, box.maxHeight - 24),
                     ),
-                    const SizedBox(height: 20),
-                  ],
-                  Text(
-                    widget.recording
-                        ? 'Listening to you'
-                        : widget.speaking
-                        ? tr('{name} is speaking', {
-                            'name': widget.assistantName,
-                          })
-                        : widget.sending
-                        ? 'Working on your message'
-                        : widget.busy
-                        ? 'One moment'
-                        : 'Tap the mic to talk',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppPalette.of(context).muted,
-                    ),
+                    halo: true,
+                    active: widget.recording || widget.speaking,
+                    speaking: widget.speaking,
+                    thinking: widget.sending || widget.busy,
+                    level: widget.level,
+                    onTap: disabled || widget.hasRetry
+                        ? null
+                        : widget.recording
+                        ? widget.onRecord
+                        : () => widget.onHandsFree(true),
                   ),
+                  if (widget.recording || widget.speaking || disabled) ...[
+                    const SizedBox(height: 12),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        widget.recording
+                            ? 'Listening to you'
+                            : widget.speaking
+                            ? tr('{name} is speaking', {
+                                'name': widget.assistantName,
+                              })
+                            : widget.sending
+                            ? 'Working on your message'
+                            : 'One moment',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xffb4aaff),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
                   if (widget.error != null) ...[
                     const SizedBox(height: 16),
                     Text(
                       widget.error!,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
+                      style: const TextStyle(
+                        color: Color(0xffff9aab),
                         fontSize: 12,
                       ),
                     ),
@@ -640,6 +693,32 @@ class _VoiceExperienceState extends State<VoiceExperience> {
                         ),
                       ],
                     ),
+                  if (widget.muted || widget.canReplay) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      children: [
+                        if (widget.muted)
+                          TextButton.icon(
+                            onPressed: widget.onMute,
+                            icon: const Icon(Icons.volume_off_outlined),
+                            label: const Text('Enable spoken replies'),
+                          ),
+                        if (widget.canReplay && !widget.sending && !widget.busy)
+                          TextButton.icon(
+                            onPressed: widget.onReplay,
+                            icon: Icon(
+                              widget.speaking
+                                  ? Icons.stop_circle_outlined
+                                  : Icons.volume_up_outlined,
+                            ),
+                            label: Text(
+                              widget.speaking ? 'Stop reply' : 'Replay reply',
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                   if (widget.hasMessages &&
                       (widget.keyboardOpen ||
                           !widget.handsFree ||
@@ -655,40 +734,189 @@ class _VoiceExperienceState extends State<VoiceExperience> {
         ),
       ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
         child: Row(
           children: [
             Expanded(
               child: TextField(
                 key: const ValueKey('hands-free-text'),
                 controller: widget.controller,
+                keyboardAppearance: Brightness.dark,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                cursorColor: const Color(0xffc7a0ff),
                 textInputAction: TextInputAction.send,
                 onSubmitted: widget.sending ? null : widget.onSend,
                 decoration: InputDecoration(
                   hintText: tr('Ask {name}…', {'name': widget.assistantName}),
-                  suffixIcon: _sendButton('Send'),
+                  hintStyle: const TextStyle(
+                    color: Color(0xffa49bc5),
+                    fontSize: 13,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xff131025),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 17,
+                    vertical: 14,
+                  ),
+                  border: _callInputBorder(),
+                  enabledBorder: _callInputBorder(),
+                  focusedBorder: _callInputBorder(focused: true),
+                  suffixIconConstraints: const BoxConstraints(
+                    minWidth: 44,
+                    minHeight: 44,
+                  ),
+                  suffixIcon: Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: widget.controller,
+                      builder: (context, value, _) => DecoratedBox(
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xff7831e8), Color(0xff4913a3)],
+                          ),
+                        ),
+                        child: IconButton(
+                          tooltip: tr('Send'),
+                          onPressed: widget.sending || value.text.trim().isEmpty
+                              ? null
+                              : () => widget.onSend(value.text),
+                          constraints: const BoxConstraints.tightFor(
+                            width: 34,
+                            height: 34,
+                          ),
+                          style: IconButton.styleFrom(
+                            minimumSize: const Size.square(34),
+                            maximumSize: const Size.square(34),
+                            padding: EdgeInsets.zero,
+                          ),
+                          icon: Icon(
+                            Icons.arrow_upward_rounded,
+                            size: 23,
+                            color: value.text.trim().isEmpty || widget.sending
+                                ? const Color(0xffbca1e5)
+                                : Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
+            const SizedBox(width: 9),
+            _OrbitButton(
               tooltip: widget.handsFree
                   ? tr('Mute microphone')
                   : tr('Resume hands-free'),
               onPressed: !widget.handsFree && (disabled || widget.hasRetry)
                   ? null
                   : () => widget.onHandsFree(!widget.handsFree),
-              icon: Icon(widget.handsFree ? Icons.mic : Icons.mic_off),
+              icon: widget.handsFree
+                  ? Icons.mic_none_rounded
+                  : Icons.mic_off_outlined,
             ),
-            IconButton.filledTonal(
+            const SizedBox(width: 5),
+            _OrbitButton(
               tooltip: tr('End call'),
               onPressed: widget.onClose,
-              icon: const Icon(Icons.close),
+              icon: Icons.close_rounded,
             ),
           ],
         ),
       ),
     ],
+  );
+
+  OutlineInputBorder _callInputBorder({bool focused = false}) =>
+      OutlineInputBorder(
+        borderRadius: BorderRadius.circular(999),
+        borderSide: BorderSide(
+          color: focused ? const Color(0xffba80ff) : const Color(0xff7136cb),
+          width: focused ? 1.2 : .8,
+        ),
+      );
+}
+
+/// The immersive voice surface stays dark, including when the app is light.
+class VoiceCallBackdrop extends StatelessWidget {
+  const VoiceCallBackdrop({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(
+      gradient: RadialGradient(
+        center: Alignment(0, -.1),
+        radius: .85,
+        colors: [Color(0xff160c35), Color(0xff090919), Color(0xff070812)],
+        stops: [0, .58, 1],
+      ),
+    ),
+    child: Stack(
+      children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(painter: _CallAmbientPainter()),
+          ),
+        ),
+        child,
+      ],
+    ),
+  );
+}
+
+class _CallAmbientPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xff242044).withValues(alpha: .14);
+    for (final circle in [
+      const Offset(.18, .2),
+      const Offset(.8, .25),
+      const Offset(.14, .72),
+      const Offset(.83, .7),
+    ]) {
+      canvas.drawCircle(
+        Offset(circle.dx * size.width, circle.dy * size.height),
+        size.width * .09,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CallAmbientPainter oldDelegate) => false;
+}
+
+class _OrbitButton extends StatelessWidget {
+  const _OrbitButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+    this.size = 44,
+  });
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: tooltip,
+    onPressed: onPressed,
+    style: IconButton.styleFrom(
+      backgroundColor: const Color(0xff141025),
+      foregroundColor: const Color(0xffe0c1ff),
+      disabledForegroundColor: const Color(0xff746386),
+      side: const BorderSide(color: Color(0xff51407d), width: .8),
+      shape: const CircleBorder(),
+      fixedSize: Size.square(size),
+      padding: EdgeInsets.zero,
+    ),
+    icon: Icon(icon, size: size * .55),
   );
 }
 

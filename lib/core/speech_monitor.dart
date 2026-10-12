@@ -42,6 +42,7 @@ class _SileroSpeechMonitor implements SpeechMonitor {
   final OrtSession session;
   final OrtSessionOptions options;
   Float32List _state = Float32List(256);
+  final Float32List _context = Float32List(64);
   final List<int> _pending = [];
   int _samples = 0;
   Timer? _timer;
@@ -60,6 +61,7 @@ class _SileroSpeechMonitor implements SpeechMonitor {
     await stop();
     if (_disposed) throw StateError('Speech detector is closed.');
     _state.fillRange(0, _state.length, 0);
+    _context.fillRange(0, _context.length, 0);
     _pending.clear();
     _samples = 0;
     final generation = ++_generation;
@@ -118,7 +120,12 @@ class _SileroSpeechMonitor implements SpeechMonitor {
   }
 
   double _infer(Float32List frame) {
-    final input = OrtValueTensor.createTensorWithDataList(frame, [1, 512]);
+    // Silero v5 needs the previous 64 samples before each 512-sample frame.
+    // Recurrent state alone does not preserve this waveform context.
+    final samples = Float32List(576)
+      ..setRange(0, 64, _context)
+      ..setRange(64, 576, frame);
+    final input = OrtValueTensor.createTensorWithDataList(samples, [1, 576]);
     final state = OrtValueTensor.createTensorWithDataList(_state, [2, 1, 128]);
     final rate = OrtValueTensor.createTensorWithData(16000);
     final run = OrtRunOptions();
@@ -130,6 +137,7 @@ class _SileroSpeechMonitor implements SpeechMonitor {
       _state = Float32List.fromList(
         nextState.expand((x) => x.expand((y) => y)).toList(),
       );
+      _context.setRange(0, 64, frame, 448);
       return probability;
     } finally {
       for (final output in outputs) {

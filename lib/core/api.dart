@@ -750,6 +750,27 @@ class AiApi {
     required String messageId,
   }) => _client.delete('/ai/conversations/$conversationId/messages/$messageId');
 
+  Future<List<Uint8List>> messageSpeech({
+    required String conversationId,
+    required String messageId,
+    required String voice,
+  }) async {
+    final data = _map(
+      await _client.post(
+        '/ai/conversations/$conversationId/messages/$messageId/speech',
+        body: {'voice': voice},
+        timeout: const Duration(seconds: 90),
+      ),
+    );
+    final clips = _list(
+      data['clips'],
+    ).map((item) => base64Decode(item['base64'] as String)).toList();
+    if (clips.isEmpty || clips.any((clip) => clip.isEmpty)) {
+      throw ApiException('Speech unavailable', code: 'AI_AUDIO_FAILED');
+    }
+    return clips;
+  }
+
   /// A voice turn reported while it happens: [AiEventKind.transcript] first,
   /// then the answer as it is written, [AiEventKind.done], and finally the
   /// spoken reply as ordered [AiEventKind.audio] pieces. Pass `speak: false`

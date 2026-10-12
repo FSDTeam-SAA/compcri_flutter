@@ -47,6 +47,15 @@ void main() {
     expect(activity.heardSpeech, isFalse);
     expect(activity.poll(const Duration(seconds: 12)), VoiceTurnDecision.pause);
   });
+  test('a quarter-second noise burst cannot confirm speech', () {
+    final activity = VoiceActivity();
+    for (var ms = 0; ms < 256; ms += 32) {
+      activity.add(.79, Duration(milliseconds: ms));
+    }
+    activity.add(.01, const Duration(milliseconds: 256));
+    expect(activity.heardSpeech, isFalse);
+    expect(activity.poll(const Duration(seconds: 12)), VoiceTurnDecision.pause);
+  });
   test('lower confidence can continue speech after a confirmed start', () {
     final activity = VoiceActivity();
     frames(activity, .8, 0, 400);

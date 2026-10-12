@@ -618,10 +618,26 @@ class BrandPainter extends CustomPainter {
 }
 
 class VoiceOrb extends StatefulWidget {
-  const VoiceOrb({super.key, this.size = 160, this.onTap, this.active = false});
+  const VoiceOrb({
+    super.key,
+    this.size = 160,
+    this.onTap,
+    this.active = false,
+    this.halo = false,
+    this.speaking = false,
+    this.thinking = false,
+    this.level = 0,
+  });
   final double size;
   final VoidCallback? onTap;
   final bool active;
+
+  /// The full orbital treatment used by the immersive call screen.
+  final bool halo;
+  final bool speaking, thinking;
+
+  /// Normalized microphone energy; eased locally to avoid meter jitter.
+  final double level;
   @override
   State<VoiceOrb> createState() => _VoiceOrbState();
 }
@@ -630,7 +646,7 @@ class _VoiceOrbState extends State<VoiceOrb> with TickerProviderStateMixin {
   late final AnimationController controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 2400),
-  )..repeat(reverse: true);
+  );
 
   /// Ripples only run while recording, so an idle orb still costs one ticker.
   late final AnimationController ripple = AnimationController(
@@ -650,18 +666,32 @@ class _VoiceOrbState extends State<VoiceOrb> with TickerProviderStateMixin {
       ripple.value = 0;
       return;
     }
-    if (!controller.isAnimating) controller.repeat(reverse: true);
+    _syncMotion();
     _syncRipple();
   }
 
   @override
   void didUpdateWidget(VoiceOrb oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.active != oldWidget.active) _syncRipple();
+    if (widget.halo != oldWidget.halo) {
+      controller.stop();
+      _syncMotion();
+    }
+    if (widget.active != oldWidget.active || widget.halo != oldWidget.halo) {
+      _syncRipple();
+    }
+  }
+
+  void _syncMotion() {
+    if (_stillFrames) return;
+    controller.duration = widget.halo
+        ? const Duration(seconds: 20)
+        : const Duration(milliseconds: 2400);
+    if (!controller.isAnimating) controller.repeat(reverse: !widget.halo);
   }
 
   void _syncRipple() {
-    if (widget.active && !_stillFrames) {
+    if (widget.active && !widget.halo && !_stillFrames) {
       if (!ripple.isAnimating) ripple.repeat();
     } else {
       ripple.stop();
@@ -677,113 +707,503 @@ class _VoiceOrbState extends State<VoiceOrb> with TickerProviderStateMixin {
   }
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: tr(widget.active ? 'Recording. Tap to send.' : 'Tap and say it'),
-    child: GestureDetector(
-      onTap: widget.onTap,
-      child: SizedBox(
-        width: widget.size,
-        height: widget.size,
-        // The rings paint past the orb without enlarging what the column lays
-        // out, so starting a recording never reflows the screen.
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            if (widget.active)
-              IgnorePointer(
-                child: OverflowBox(
-                  maxWidth: widget.size * _rippleExtent,
-                  maxHeight: widget.size * _rippleExtent,
-                  child: AnimatedBuilder(
-                    animation: ripple,
-                    builder: (context, _) => CustomPaint(
-                      size: Size.square(widget.size * _rippleExtent),
-                      painter: _RipplePainter(ripple.value),
+  Widget build(BuildContext context) {
+    if (widget.halo) return _halo();
+    return Semantics(
+      button: true,
+      label: tr(widget.active ? 'Recording. Tap to send.' : 'Tap and say it'),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: SizedBox(
+          width: widget.size,
+          height: widget.size,
+          // The rings paint past the orb without enlarging what the column lays
+          // out, so starting a recording never reflows the screen.
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              if (widget.active)
+                IgnorePointer(
+                  child: OverflowBox(
+                    maxWidth: widget.size * _rippleExtent,
+                    maxHeight: widget.size * _rippleExtent,
+                    child: AnimatedBuilder(
+                      animation: ripple,
+                      builder: (context, _) => CustomPaint(
+                        size: Size.square(widget.size * _rippleExtent),
+                        painter: _RipplePainter(ripple.value),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            AnimatedBuilder(
-              animation: controller,
-              builder: (context, child) {
-                final v = _stillFrames ? 0.0 : controller.value;
-                return Transform.translate(
-                  offset: Offset(0, math.sin(v * math.pi) * -5),
-                  child: Transform.scale(
-                    scale: 1 + v * (widget.active ? .07 : .02),
-                    child: child,
+              AnimatedBuilder(
+                animation: controller,
+                builder: (context, child) {
+                  final v = _stillFrames ? 0.0 : controller.value;
+                  return Transform.translate(
+                    offset: Offset(0, math.sin(v * math.pi) * -5),
+                    child: Transform.scale(
+                      scale: 1 + v * (widget.active ? .07 : .02),
+                      child: child,
+                    ),
+                  );
+                },
+                child: RepaintBoundary(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: widget.size * .72,
+                        height: widget.size * .72,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(
+                                0xffb79aff,
+                              ).withValues(alpha: .24),
+                              blurRadius: widget.size * .18,
+                              offset: Offset(0, widget.size * .08),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Image.asset(
+                        'assets/artwork/glass_orb.png',
+                        width: widget.size,
+                        height: widget.size,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                        excludeFromSemantics: true,
+                      ),
+                      AnimatedSwitcher(
+                        duration: _stillFrames
+                            ? Duration.zero
+                            : const Duration(milliseconds: 220),
+                        child: widget.active
+                            ? Container(
+                                key: const ValueKey('recording'),
+                                width: widget.size * .34,
+                                height: widget.size * .34,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withValues(alpha: .65),
+                                  border: Border.all(color: Colors.white70),
+                                ),
+                                child: Icon(
+                                  Icons.stop_rounded,
+                                  color: const Color(0xff9858eb),
+                                  size: widget.size * .19,
+                                ),
+                              )
+                            : Image.asset(
+                                'assets/artwork/microphone.png',
+                                key: const ValueKey('microphone'),
+                                width: widget.size * .38,
+                                height: widget.size * .38,
+                                fit: BoxFit.contain,
+                                filterQuality: FilterQuality.high,
+                                excludeFromSemantics: true,
+                              ),
+                      ),
+                    ],
                   ),
-                );
-              },
-              child: RepaintBoundary(
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _halo() => Semantics(
+    button: widget.onTap != null,
+    label: tr(
+      widget.speaking
+          ? 'Stop reply'
+          : widget.active
+          ? 'Recording. Tap to send.'
+          : 'Tap and say it',
+    ),
+    child: GestureDetector(
+      onTap: widget.onTap,
+      child: RepaintBoundary(
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(end: widget.active ? widget.level.clamp(0.0, 1.0) : 0),
+          duration: _stillFrames
+              ? Duration.zero
+              : const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          builder: (context, energy, _) => SizedBox.square(
+            dimension: widget.size,
+            child: CustomPaint(
+              painter: _OrbitPainter(
+                motion: controller,
+                energy: energy,
+                active: widget.active,
+                speaking: widget.speaking,
+                thinking: widget.thinking,
+                still: _stillFrames,
+              ),
+              child: Center(
+                child: AnimatedBuilder(
+                  animation: controller,
+                  child: RepaintBoundary(
+                    child: Image.asset(
+                      'assets/artwork/glass_orb.png',
                       width: widget.size * .72,
                       height: widget.size * .72,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(
-                              0xffb79aff,
-                            ).withValues(alpha: .24),
-                            blurRadius: widget.size * .18,
-                            offset: Offset(0, widget.size * .08),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Image.asset(
-                      'assets/artwork/glass_orb.png',
-                      width: widget.size,
-                      height: widget.size,
-                      fit: BoxFit.contain,
                       filterQuality: FilterQuality.high,
                       excludeFromSemantics: true,
                     ),
-                    AnimatedSwitcher(
-                      duration: _stillFrames
-                          ? Duration.zero
-                          : const Duration(milliseconds: 220),
-                      child: widget.active
-                          ? Container(
-                              key: const ValueKey('recording'),
-                              width: widget.size * .34,
-                              height: widget.size * .34,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.white.withValues(alpha: .65),
-                                border: Border.all(color: Colors.white70),
-                              ),
-                              child: Icon(
-                                Icons.stop_rounded,
-                                color: const Color(0xff9858eb),
-                                size: widget.size * .19,
-                              ),
-                            )
-                          : Image.asset(
-                              'assets/artwork/microphone.png',
-                              key: const ValueKey('microphone'),
-                              width: widget.size * .38,
-                              height: widget.size * .38,
-                              fit: BoxFit.contain,
-                              filterQuality: FilterQuality.high,
-                              excludeFromSemantics: true,
-                            ),
-                    ),
-                  ],
+                  ),
+                  builder: (context, child) {
+                    final phase = _stillFrames
+                        ? 0.0
+                        : controller.value * math.pi * 2;
+                    final breath = math.sin(phase * 4);
+                    final scale =
+                        1 +
+                        breath * (widget.active ? .012 + energy * .018 : .008);
+                    return Transform.scale(
+                      scale: scale,
+                      child: CustomPaint(
+                        foregroundPainter: _GlassFlowPainter(
+                          motion: controller,
+                          energy: energy,
+                          active: widget.active,
+                          speaking: widget.speaking,
+                          thinking: widget.thinking,
+                          still: _stillFrames,
+                        ),
+                        child: child,
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
-          ],
+          ),
         ),
       ),
     ),
   );
+}
+
+/// One continuous clock drives the orbits, light and voice response. Canvas
+/// repainting stays inside the orb's boundary, away from the conversation UI.
+class _OrbitPainter extends CustomPainter {
+  _OrbitPainter({
+    required this.motion,
+    required this.energy,
+    required this.active,
+    required this.speaking,
+    required this.thinking,
+    required this.still,
+  }) : super(repaint: motion);
+  final Animation<double> motion;
+  final double energy;
+  final bool active, speaking, thinking, still;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.shortestSide * .475;
+    final phase = still ? 0.0 : motion.value * math.pi * 2;
+    final breath = (math.sin(phase * 4) + 1) / 2;
+    final intensity = speaking
+        ? .75
+        : active
+        ? .24 + energy * .65
+        : .12;
+    final bounds = Rect.fromCircle(center: c, radius: r);
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            const Color(0xffa466ff).withValues(alpha: .10 + intensity * .08),
+            const Color(0xff7131f4).withValues(alpha: .15 + breath * .04),
+            const Color(0xff6335dd).withValues(alpha: 0),
+          ],
+          stops: const [.38, .7, 1],
+        ).createShader(bounds),
+    );
+
+    // Fine circular tracks keep the glow crisp instead of washing out the glass.
+    for (final fraction in [1.0, .75]) {
+      final radius = r * fraction;
+      canvas.drawCircle(
+        c,
+        radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3
+          ..color = const Color(
+            0xff7c3aff,
+          ).withValues(alpha: .18 + intensity * .1)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      );
+      canvas.drawCircle(
+        c,
+        radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = .65
+          ..shader = SweepGradient(
+          transform: GradientRotation(-phase),
+            colors: const [
+              Color(0x257b4cf5),
+              Color(0xffb897ff),
+              Color(0x607f46ff),
+              Color(0xff8049ed),
+              Color(0x257b4cf5),
+            ],
+            stops: const [0, .24, .48, .75, 1],
+          ).createShader(bounds),
+      );
+    }
+
+    // Two liquid contours gently respond to real microphone energy. Playback
+    // uses a separate rhythm because it has no microphone meter.
+    for (var ring = 0; ring < 2; ring++) {
+      final path = Path();
+      for (var step = 0; step <= 144; step++) {
+        final a = step * math.pi * 2 / 144;
+        final swell =
+            math.sin(a * 3 + phase * 8 + ring * math.pi) * .012 +
+            math.sin(a * 5 - phase * 6) * .007;
+        final radius = r * (.815 + ring * .035 + swell * (.3 + intensity));
+        final point = c + Offset(math.cos(a), math.sin(a)) * radius;
+        if (step == 0) {
+          path.moveTo(point.dx, point.dy);
+        } else {
+          path.lineTo(point.dx, point.dy);
+        }
+      }
+      path.close();
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = ring == 0 ? 1.1 : .6
+          ..color =
+              (ring == 0 ? const Color(0xffc2a0ff) : const Color(0xff81dfff))
+                  .withValues(alpha: .13 + intensity * .32),
+      );
+    }
+
+    for (var i = 0; i < 64; i++) {
+      final angle = i * math.pi / 32 - math.pi / 2 + phase;
+      final point = c + Offset(math.cos(angle), math.sin(angle)) * r * .9;
+      final marker = i % 8 == 0;
+      final shimmer = .6 + .4 * math.sin(phase * 6 + i * .7);
+      final color = i % 16 == 0
+          ? const Color(0xffb9eeff)
+          : const Color(0xffdec7ff);
+      if (marker) {
+        canvas.drawCircle(
+          point,
+          r * .023,
+          Paint()
+            ..color = const Color(
+              0xff9749ff,
+            ).withValues(alpha: .65 + shimmer * .2)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+        );
+      }
+      canvas.drawCircle(
+        point,
+        r * (marker ? .011 : .0038),
+        Paint()
+          ..color = color.withValues(
+            alpha: marker ? .85 + shimmer * .15 : .25 + shimmer * .4,
+          ),
+      );
+    }
+
+    // Counter-rotating highlights travel around the perimeter, with soft tails.
+    for (var i = 0; i < 2; i++) {
+      final angle = (i == 0 ? phase : -phase + math.pi);
+      final orbit = r * (i == 0 ? 1 : .75);
+      final color = i == 0 ? const Color(0xffcfb6ff) : const Color(0xffa2eeff);
+      final rect = Rect.fromCircle(center: c, radius: orbit);
+      canvas.drawArc(
+        rect,
+        angle - .32,
+        .32,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = 1.3
+          ..color = color.withValues(alpha: .6),
+      );
+      final point = c + Offset(math.cos(angle), math.sin(angle)) * orbit;
+      canvas.drawCircle(
+        point,
+        r * .025,
+        Paint()
+          ..color = color.withValues(alpha: .5)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      );
+      canvas.drawCircle(
+        point,
+        r * .009,
+        Paint()..color = const Color(0xfff7edff),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_OrbitPainter old) =>
+      energy != old.energy ||
+      active != old.active ||
+      speaking != old.speaking ||
+      thinking != old.thinking ||
+      still != old.still;
+}
+
+/// Translucent moving colour inside the glass, with a small illuminated voice
+/// waveform replacing the opaque disc that used to cover its centre.
+class _GlassFlowPainter extends CustomPainter {
+  _GlassFlowPainter({
+    required this.motion,
+    required this.energy,
+    required this.active,
+    required this.speaking,
+    required this.thinking,
+    required this.still,
+  }) : super(repaint: motion);
+  final Animation<double> motion;
+  final double energy;
+  final bool active, speaking, thinking, still;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.shortestSide * .405;
+    final phase = still ? 0.0 : motion.value * math.pi * 2;
+    canvas.save();
+    canvas.clipPath(Path()..addOval(Rect.fromCircle(center: c, radius: r)));
+    for (var i = 0; i < 3; i++) {
+      final angle = phase * (i == 1 ? -2 : 2) + i * math.pi * 2 / 3;
+      final point =
+          c + Offset(math.cos(angle) * .52, math.sin(angle) * .42) * r;
+      final color = [
+        const Color(0xff81f4ff),
+        const Color(0xfffa9dde),
+        const Color(0xffb49aff),
+      ][i];
+      final bounds = Rect.fromCircle(center: point, radius: r * .86);
+      canvas.drawCircle(
+        point,
+        r * .86,
+        Paint()
+          ..blendMode = BlendMode.screen
+          ..shader = RadialGradient(
+            colors: [color.withValues(alpha: .27), color.withValues(alpha: 0)],
+          ).createShader(bounds),
+      );
+    }
+    // Caustic ribbons drift through the surface like light through crystal.
+    for (var i = 0; i < 2; i++) {
+      final shift = math.sin(phase * 3 + i * 2) * r * .24;
+      final ribbon = Path()
+        ..moveTo(c.dx - r, c.dy + shift - r * .1)
+        ..cubicTo(
+          c.dx - r * .3,
+          c.dy - r * .68 + shift,
+          c.dx + r * .15,
+          c.dy + r * .62,
+          c.dx + r,
+          c.dy - r * .32 + shift,
+        );
+      canvas.drawPath(
+        ribbon,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = r * .055
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * .045)
+          ..color = (i == 0 ? const Color(0xffb4f7ff) : const Color(0xffffd4f5))
+              .withValues(alpha: .32)
+          ..blendMode = BlendMode.screen,
+      );
+    }
+    canvas.restore();
+
+    final core = Rect.fromCircle(center: c, radius: r * .42);
+    canvas.drawCircle(
+      c,
+      r * .42,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            const Color(0xff7648ce).withValues(alpha: .24),
+            const Color(0xffa572e3).withValues(alpha: 0),
+          ],
+        ).createShader(core),
+    );
+    if (thinking) {
+      for (var i = 0; i < 3; i++) {
+        final a = phase * 14 + i * math.pi * 2 / 3;
+        final point = c + Offset(math.cos(a), math.sin(a)) * r * .1;
+        canvas.drawCircle(
+          point,
+          r * .021,
+          Paint()..color = const Color(0xfff9f1ff),
+        );
+      }
+    } else {
+      final intensity = speaking
+          ? .85
+          : active
+          ? .18 + energy * .82
+          : .08;
+      for (var i = 0; i < 5; i++) {
+        final rhythm = still
+            ? .45
+            : (math.sin(phase * (speaking ? 34 : 20) + i * 1.4) + 1) / 2;
+        final envelope = 1 - (i - 2).abs() * .22;
+        final height = r * (.035 + intensity * (.06 + rhythm * .20) * envelope);
+        final x = c.dx + (i - 2) * r * .065;
+        final start = Offset(x, c.dy - height / 2);
+        final end = Offset(x, c.dy + height / 2);
+        canvas.drawLine(
+          start,
+          end,
+          Paint()
+            ..color = const Color(0xffad72ff).withValues(alpha: .6)
+            ..strokeWidth = r * .05
+            ..strokeCap = StrokeCap.round
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+        );
+        canvas.drawLine(
+          start,
+          end,
+          Paint()
+            ..shader = const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xffffffff), Color(0xffe4d3ff)],
+            ).createShader(core)
+            ..strokeWidth = r * .019
+            ..strokeCap = StrokeCap.round,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GlassFlowPainter old) =>
+      energy != old.energy ||
+      active != old.active ||
+      speaking != old.speaking ||
+      thinking != old.thinking ||
+      still != old.still;
 }
 
 /// How far the outermost ripple travels, as a multiple of the orb diameter.

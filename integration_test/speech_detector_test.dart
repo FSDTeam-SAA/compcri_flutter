@@ -7,6 +7,7 @@ import 'package:compcri_flutter/core/speech_monitor.dart';
 import 'package:compcri_flutter/core/voice_activity.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:record/record.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -36,11 +37,9 @@ void main() {
       final noiseFile = File('${directory.path}/noise.wav');
       await noiseFile.writeAsBytes(_wave(noise));
       final finished = Completer<void>();
-      var noiseSpeech = false;
+      final noiseActivity = VoiceActivity();
       await monitor.start(noiseFile.path, (probability, time) {
-        if (probability >= .6) {
-          noiseSpeech = true;
-        }
+        noiseActivity.add(probability, time);
         if (time >= const Duration(milliseconds: 2900) &&
             !finished.isCompleted) {
           finished.complete();
@@ -48,7 +47,7 @@ void main() {
       }, () => finished.completeError(StateError('Native inference failed')));
       await finished.future.timeout(const Duration(seconds: 15));
       await monitor.stop();
-      expect(noiseSpeech, isFalse);
+      expect(noiseActivity.heardSpeech, isFalse);
 
       final source = base64Decode(speech);
       final offset = waveDataOffset(source)!;
@@ -57,8 +56,19 @@ void main() {
         ...Uint8List(32000 * 3),
       ]);
       final speechFile = File('${directory.path}/speech.wav');
-      await speechFile.writeAsBytes(_wave(samples));
       for (var turn = 0; turn < 3; turn++) {
+        // Reuse the real model across normal and quieter spoken turns.
+        final volume = [1.0, .25, .1][turn];
+        final scaled = Uint8List.fromList(samples);
+        final pcm = ByteData.sublistView(scaled);
+        for (var offset = 0; offset + 1 < scaled.length; offset += 2) {
+          pcm.setInt16(
+            offset,
+            (pcm.getInt16(offset, Endian.little) * volume).round(),
+            Endian.little,
+          );
+        }
+        await speechFile.writeAsBytes(_wave(scaled));
         final activity = VoiceActivity();
         final sent = Completer<void>();
         var peak = 0.0;
@@ -80,6 +90,56 @@ void main() {
       }
     },
   );
+
+  testWidgets('native recorder feeds the detector before the WAV is closed', (
+    tester,
+  ) async {
+    final directory = await Directory.systemTemp.createTemp('live-speech-qa');
+    final recorder = AudioRecorder();
+    final monitor = await SpeechMonitor.create();
+    addTearDown(() async {
+      await monitor.dispose();
+      await recorder.dispose();
+      await directory.delete(recursive: true);
+    });
+    expect(await recorder.hasPermission(), isTrue);
+    // The first native session can leave a different header on later turns.
+    for (var turn = 0; turn < 3; turn++) {
+      final path = '${directory.path}/live-$turn.wav';
+      await recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+          echoCancel: true,
+          noiseSuppress: true,
+          iosConfig: IosRecordConfig(
+            allowHapticsAndSystemSoundsDuringRecording: true,
+          ),
+        ),
+        path: path,
+      );
+      final processed = Completer<void>();
+      await monitor.start(
+        path,
+        (probability, time) {
+          expect(probability, inInclusiveRange(0, 1));
+          if (time >= const Duration(seconds: 1) && !processed.isCompleted) {
+            processed.complete();
+          }
+        },
+        () {
+          if (!processed.isCompleted) {
+            processed.completeError(StateError('Live inference failed'));
+          }
+        },
+      );
+      await processed.future.timeout(const Duration(seconds: 10));
+      await monitor.stop();
+      expect(await recorder.stop(), path);
+      expect(waveDataOffset(await File(path).readAsBytes()), isNotNull);
+    }
+  });
 }
 
 Uint8List _wave(Uint8List samples) {

@@ -24,6 +24,7 @@ export 'calendar.dart' show CalendarTab;
 import 'network.dart';
 import 'home.dart';
 import 'voice_experience.dart';
+import 'conversation_history.dart';
 import '../core/i18n.dart';
 export 'home.dart' show HomeTab;
 
@@ -526,12 +527,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
   String streamingText = '';
   List<String> activeTools = const [];
   String title = 'New chat';
-  String historyQuery = '';
+  bool historyLoading = false;
+  bool historyMutating = false;
+  String? historyError;
   bool sending = false;
   bool loading = false;
   bool started = false;
   bool recording = false;
   bool recorderBusy = false;
+  String? recordingPath;
+  StreamSubscription<RecordState>? recordingSubscription;
 
   /// Leaving a call invalidates both permission requests and native starts.
   int recordingGeneration = 0;
@@ -557,6 +562,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
   /// More pieces of the reply being played are still on their way.
   bool clipsPending = false;
+  bool speechRetryBusy = false;
+  bool replyAudioFailed = false;
+  int speechRetryGeneration = 0;
+
+  ChatMessage? get latestAssistant {
+    for (final message in messages.reversed) {
+      if (!message.isUser && !message.pending) return message;
+    }
+    return null;
+  }
 
   /// Every piece of the latest spoken reply, kept for replay.
   List<Uint8List> lastReply = const [];
@@ -575,6 +590,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   StreamSubscription<Amplitude>? amplitudeSubscription;
   StreamSubscription<PlayerState>? playbackSubscription;
   StreamSubscription<void>? completionSubscription;
+  StreamSubscription<AudioEvent>? playbackErrors;
 
   // --- hands-free calling -------------------------------------------------
 
@@ -588,6 +604,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// Guards the auto-listen hop so a late playback event cannot start a second
   /// recorder after the user has already left or switched off.
   bool autoListenQueued = false;
+  Timer? autoListenTimer;
 
   VoiceActivity? voiceActivity;
   Stopwatch? recordingClock;
@@ -614,7 +631,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
     // not distinguish "finished" from "stopped by the user".
     completionSubscription = player.onPlayerComplete.listen((_) {
       if (mounted) _onClipComplete();
-    });
+    }, onError: (Object _) {}); // Handled once by playbackErrors below.
+    playbackErrors = player.eventStream.listen(
+      (_) {},
+      onError: (Object _) {
+        if (mounted && clipPlaying) _playbackFailed(replyTurn);
+      },
+    );
     _restoreVoicePrefs();
   }
 
@@ -754,6 +777,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     // Stop the loop before tearing down, so no queued hop outlives the screen.
     handsFree = false;
     autoListenQueued = false;
+    autoListenTimer?.cancel();
     recordingGeneration++;
     replyTurn++;
     input.dispose();
@@ -762,6 +786,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
     noticeTimer?.cancel();
     playbackSubscription?.cancel();
     completionSubscription?.cancel();
+    playbackErrors?.cancel();
+    recordingSubscription?.cancel();
     final startup = recordingStartup;
     unawaited(
       () async {
@@ -771,6 +797,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
           if (recording) await recorder.cancel();
         } finally {
           await recorder.dispose();
+          final path = recordingPath;
+          if (path != null) unawaited(_deleteAudio(path));
         }
       }().catchError((_) {}),
     );
@@ -797,6 +825,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
         conversationId = conversation.id;
         title = conversation.title;
         messages = [...conversation.messages];
+        lastReply = const [];
+        replyAudioFailed = false;
       });
       _scrollToEnd();
     } on ApiException catch (error) {
@@ -867,6 +897,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
     setState(() {
       sending = true;
       voiceError = null;
+      lastReply = const [];
+      replyAudioFailed = false;
       messages = [
         ...messages,
         ChatMessage(id: 'local-${messages.length}', text: text, isUser: true),
@@ -1003,6 +1035,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (recording) {
         await speechMonitor?.stop();
         final path = await recorder.stop();
+        recordingPath = null;
         _stopMeter();
         if (!mounted) {
           if (path != null) await _deleteAudio(path);
@@ -1027,14 +1060,26 @@ class _ConversationScreenState extends State<ConversationScreen> {
             'Allow microphone access in your device settings, or type your message below.',
           );
         }
+        recordingSubscription ??= recorder.onStateChanged().listen((state) {
+          if (state != RecordState.record) {
+            unawaited(_recoverInterruptedRecording());
+          }
+        }, onError: (_) => unawaited(_recoverInterruptedRecording()));
         final directory = await getTemporaryDirectory();
         if (!mounted || generation != recordingGeneration) return;
         try {
           speechMonitor ??= await widget.speechMonitorFactory();
         } catch (_) {
-          throw StateError(
-            'Could not start speech detection. Please try again, or type below.',
-          );
+          // Detection only decides when to send automatically. Native
+          // recording and server transcription still work without the model.
+          if (mounted && generation == recordingGeneration) {
+            setState(() {
+              handsFree = false;
+              callMode = false;
+              voiceError =
+                  'Automatic speech detection is unavailable. Speak, then tap Send now.';
+            });
+          }
         }
         if (!mounted || generation != recordingGeneration) return;
         final path =
@@ -1059,42 +1104,44 @@ class _ConversationScreenState extends State<ConversationScreen> {
         }
         setState(() {
           recording = true;
+          recordingPath = path;
           recordingSeconds = 0;
           soundLevel = 0;
           voiceActivity = VoiceActivity();
           recordingClock = time_source.clock.stopwatch()..start();
         });
-        await speechMonitor!.start(
-          path,
-          (probability, audioTime) {
-            if (!mounted || !recording || generation != recordingGeneration) {
-              return;
-            }
-            final decision = voiceActivity?.add(
-              probability,
-              audioTime,
-              finishTurn: handsFree,
-            );
-            if (decision != null) {
-              _handleVoiceDecision(decision);
-            }
-          },
-          () {
-            if (!mounted || !recording || generation != recordingGeneration) {
-              return;
-            }
-            unawaited(
-              _setHandsFree(false).then((_) {
-                if (mounted) {
-                  setState(
-                    () => voiceError =
-                        'Could not detect speech. Tap the mic to try again, or type below.',
-                  );
-                }
-              }),
-            );
-          },
-        );
+        Duration? lastSpeechFrameAt;
+        var latestAudioTime = Duration.zero;
+        try {
+          await speechMonitor?.start(
+            path,
+            (probability, audioTime) {
+              if (!mounted || !recording || generation != recordingGeneration) {
+                return;
+              }
+              lastSpeechFrameAt = recordingClock?.elapsed;
+              latestAudioTime = audioTime;
+              final decision = voiceActivity?.add(
+                probability,
+                audioTime,
+                finishTurn: handsFree,
+              );
+              if (decision != null) {
+                _handleVoiceDecision(decision);
+              }
+            },
+            () {
+              if (!mounted || !recording || generation != recordingGeneration) {
+                return;
+              }
+              _speechDetectionUnavailable();
+            },
+          );
+        } catch (_) {
+          if (mounted && generation == recordingGeneration) {
+            _speechDetectionUnavailable();
+          }
+        }
         if (!mounted || generation != recordingGeneration) {
           await speechMonitor?.stop();
           await recorder.cancel();
@@ -1109,8 +1156,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
           final activity = voiceActivity;
           final elapsed = recordingClock?.elapsed;
           if (activity == null || elapsed == null) return;
+          // A recorder can stay open while its growing WAV stops feeding the
+          // detector. Keep the recording sendable instead of discarding it as
+          // silence, and don't end a turn ahead of unprocessed audio.
+          if (elapsed - (lastSpeechFrameAt ?? Duration.zero) >=
+              const Duration(seconds: 3)) {
+            _speechDetectionUnavailable();
+            return;
+          }
           final wasReady = activity.ready;
-          final decision = activity.poll(elapsed);
+          final decision = activity.poll(latestAudioTime);
           if (wasReady != activity.ready) setState(() {});
           _handleVoiceDecision(decision);
         });
@@ -1137,6 +1192,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         try {
           await recorder.cancel();
         } catch (_) {}
+        recordingPath = null;
         _stopMeter();
       }
       if (mounted && generation == recordingGeneration) {
@@ -1156,6 +1212,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
       }
       if (!starting) _afterReply();
     }
+  }
+
+  void _speechDetectionUnavailable() {
+    // Preserve captured audio and let the user explicitly finish this turn.
+    setState(() {
+      handsFree = false;
+      callMode = false;
+      voiceError =
+          'Automatic speech detection is unavailable. Speak, then tap Send now.';
+    });
+    voiceActivityTimer?.cancel();
+    autoListenTimer?.cancel();
+    autoListenQueued = false;
+    final monitor = speechMonitor;
+    if (monitor != null) unawaited(monitor.stop());
   }
 
   void _stopMeter() {
@@ -1206,6 +1277,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         recording ||
         sending ||
         recorderBusy ||
+        speechRetryBusy ||
         speaking ||
         clipPlaying ||
         clipsPending ||
@@ -1215,7 +1287,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
     autoListenQueued = true;
     // A beat of silence between the reply ending and the microphone opening
     // stops the tail of the reply bleeding into the next recording.
-    Future<void>.delayed(const Duration(milliseconds: 400), () async {
+    autoListenTimer = Timer(const Duration(milliseconds: 400), () async {
+      autoListenTimer = null;
       autoListenQueued = false;
       if (!mounted || !handsFree) return;
       if (recording ||
@@ -1252,6 +1325,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
     unawaited(store.api.client.store.setHandsFree(value));
     if (!value) {
       autoListenQueued = false;
+      autoListenTimer?.cancel();
+      autoListenTimer = null;
       await _cancelRecording();
       return;
     }
@@ -1336,6 +1411,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
     try {
       await speechMonitor?.stop();
       await recorder.cancel();
+      final path = recordingPath;
+      recordingPath = null;
+      if (path != null) unawaited(_deleteAudio(path));
       _stopMeter();
       if (mounted) {
         setState(() {
@@ -1353,6 +1431,47 @@ class _ConversationScreenState extends State<ConversationScreen> {
     } finally {
       if (mounted) setState(() => recorderBusy = false);
     }
+  }
+
+  /// A native interruption is not a completed spoken turn. Keep any captured
+  /// audio for an explicit retry, and require a tap before listening again.
+  Future<void> _recoverInterruptedRecording() async {
+    if (!mounted || !recording || recorderBusy) return;
+    final generation = ++recordingGeneration;
+    var path = recordingPath;
+    setState(() {
+      recorderBusy = true;
+      handsFree = false;
+      autoListenQueued = false;
+    });
+    _stopMeter();
+    try {
+      await speechMonitor?.stop();
+      path = await recorder.stop() ?? path;
+    } catch (_) {
+      try {
+        await recorder.cancel();
+      } catch (_) {}
+    }
+    final saved = path != null && await File(path).exists();
+    final current = mounted && generation == recordingGeneration;
+    if (mounted) {
+      setState(() {
+        recording = false;
+        recordingPath = null;
+        recorderBusy = false;
+        soundLevel = 0;
+        recordingSeconds = 0;
+        if (current) {
+          retryAudioPath = saved ? path : null;
+          retryWasEmpty = false;
+          voiceError = saved
+              ? 'Recording was interrupted. Retry the saved audio, or discard it and try again.'
+              : 'Recording was interrupted. Tap the mic to try again, or type below.';
+        }
+      });
+    }
+    if (!current && path != null) await _deleteAudio(path);
   }
 
   Future<void> _deleteAudio(String path) async {
@@ -1393,18 +1512,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
     try {
       await _playClip(clip);
     } catch (_) {
-      if (!mounted || turn != replyTurn) return;
-      setState(() {
-        clipQueue.clear();
-        clipPlaying = false;
-        clipsPending = false;
-      });
-      _flashNotice(
-        'Audio playback is unavailable. You can read the reply below.',
-      );
-      // No audio means no completion event, so drive the loop by hand.
-      _afterReply();
+      _playbackFailed(turn);
     }
+  }
+
+  void _playbackFailed(int turn) {
+    if (!mounted || turn != replyTurn) return;
+    // A native failure may arrive after resume() has already succeeded.
+    // Invalidate pending clips and release the session before retrying.
+    unawaited(_stopReply().catchError((Object _) {}));
+    setState(() {
+      speaking = false;
+      replyAudioFailed = true;
+      handsFree = false;
+      voiceError = 'Could not play the reply. Tap Replay reply to try again.';
+    });
   }
 
   /// One piece finished: play the next, or — once the whole reply has been
@@ -1420,7 +1542,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   /// Silences the reply now and ignores any pieces still on their way.
-  Future<void> _stopReply() async {
+  Future<void> _stopReply({bool cancelSpeechRetry = true}) async {
+    autoListenTimer?.cancel();
+    autoListenTimer = null;
+    autoListenQueued = false;
+    if (cancelSpeechRetry) {
+      speechRetryGeneration++;
+      speechRetryBusy = false;
+    }
     replyTurn++;
     clipQueue.clear();
     clipsPending = false;
@@ -1436,10 +1565,53 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _replay() async {
-    await _stopReply();
-    if (!mounted) return;
-    for (final clip in lastReply) {
-      _enqueueClip(clip);
+    if (sending || recorderBusy || speechRetryBusy) return;
+    final store = StoreScope.read(context);
+    final message = latestAssistant;
+    final generation = ++speechRetryGeneration;
+    setState(() => speechRetryBusy = true);
+    try {
+      if (handsFree) {
+        await _setHandsFree(false);
+      } else if (recording || recordingStartup != null) {
+        await _cancelRecording();
+      }
+      await _stopReply(cancelSpeechRetry: false);
+      if (!mounted || generation != speechRetryGeneration) return;
+      await _setMuted(false);
+      if (!mounted || generation != speechRetryGeneration) return;
+      if (lastReply.isEmpty || replyAudioFailed) {
+        final id = conversationId;
+        if (id == null || message == null) return;
+        setState(() {
+          voiceError = null;
+        });
+        try {
+          final clips = await store.api.ai.messageSpeech(
+            conversationId: id,
+            messageId: message.id,
+            voice: preferredVoice,
+          );
+          if (!mounted || generation != speechRetryGeneration) return;
+          lastReply = clips;
+          replyAudioFailed = false;
+        } catch (_) {
+          if (mounted && generation == speechRetryGeneration) {
+            setState(
+              () => voiceError =
+                  'Could not play the reply. Tap Replay reply to try again.',
+            );
+          }
+          return;
+        }
+      }
+      for (final clip in lastReply) {
+        _enqueueClip(clip);
+      }
+    } finally {
+      if (mounted && generation == speechRetryGeneration) {
+        setState(() => speechRetryBusy = false);
+      }
     }
   }
 
@@ -1447,7 +1619,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
   /// call moving, since no completion event is coming for the missing audio.
   void _speechFailed(int playback) {
     if (!mounted || playback != replyTurn) return;
-    setState(() => clipsPending = false);
+    setState(() {
+      clipsPending = false;
+      replyAudioFailed = true;
+    });
     _flashNotice(
       callMode
           ? 'Audio playback is unavailable. Open the conversation to read the reply.'
@@ -1485,6 +1660,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       retryAudioPath = null;
       voiceError = null;
       lastReply = const [];
+      replyAudioFailed = false;
       messages = [
         ...messages,
         ChatMessage(
@@ -1764,108 +1940,109 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Widget build(BuildContext context) {
     final store = StoreScope.of(context);
     if (widget.voiceMode) {
-      return Backdrop(
-        child: Scaffold(
-          appBar: AppBar(
-            title: Text(
-              callMode
-                  ? store.assistantName
-                  : tr('Voice with {name}', {'name': store.assistantName}),
-            ),
-            actions: [
-              if (callMode) ...[
-                IconButton(
-                  tooltip: tr('Show conversation'),
-                  onPressed: () => unawaited(_leaveCall()),
-                  icon: const Icon(Icons.chat_bubble_outline),
+      final voiceScaffold = Scaffold(
+        appBar: callMode
+            ? null
+            : AppBar(
+                title: Text(
+                  tr('Voice with {name}', {'name': store.assistantName}),
                 ),
-                IconButton(
-                  tooltip: tr('Voice'),
-                  onPressed: () => unawaited(_pickVoice()),
-                  icon: const Icon(Icons.tune),
-                ),
-              ],
-              if (!callMode)
-                IconButton(
-                  tooltip: tr('Chat history'),
-                  onPressed:
-                      sending ||
-                          recording ||
-                          recorderBusy ||
-                          retryAudioPath != null
-                      ? null
-                      : () => scaffold.currentState?.openEndDrawer(),
-                  icon: const Icon(Icons.history_rounded),
-                ),
-            ],
-          ),
-          key: scaffold,
-          endDrawer: _historyDrawer(store),
-          body: SafeArea(
-            top: false,
-            child: VoiceExperience(
-              keyboardOpen: MediaQuery.viewInsetsOf(context).bottom > 0,
-              minimal: callMode,
-              proposals: _pendingCards(),
-              onClose: () => unawaited(_leaveCall()),
-              recording:
-                  recording && (!handsFree || voiceActivity?.ready == true),
-              busy:
-                  recorderBusy ||
-                  loading ||
-                  (handsFree && recording && voiceActivity?.ready != true),
-              sending: sending,
-              transcribed: transcribed,
-              speaking: replySounding,
-              muted: mutedAudio,
-              seconds: recordingSeconds,
-              level: soundLevel,
-              hasMessages: messages.isNotEmpty,
-              hasRetry: retryAudioPath != null,
-              retryIsEmpty: retryWasEmpty,
-              canReplay: lastReply.isNotEmpty,
-              error: voiceError,
-              handsFree: handsFree,
-              voiceLabel: AriaVoice.find(preferredVoice).label,
-              allowance: quota == null
-                  ? null
-                  : tr('{count} LEFT TODAY', {'count': quota!.remaining}),
-              allowanceLow: quota?.low ?? false,
-              controller: input,
-              scroll: scroll,
-              onRecord: _toggleVoice,
-              onCancel: _cancelRecording,
-              onRetry: () {
-                final path = retryAudioPath;
-                if (path != null) _sendVoice(path);
-              },
-              onDiscard: _discardAudio,
-              onHandsFree: (value) => unawaited(_setHandsFree(value)),
-              onPickVoice: () => unawaited(_pickVoice()),
-              onMute: () => unawaited(_setMuted(!mutedAudio)),
-              onReplay: () {
-                if (replySounding) {
-                  unawaited(_stopReply());
-                } else if (lastReply.isNotEmpty) {
-                  unawaited(_setMuted(false));
-                  unawaited(_replay());
-                }
-              },
-              onSend: _sendTyped,
-              assistantName: store.assistantName,
-              messages: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var i = 0; i < messages.length; i++)
-                    _bubble(messages[i], i),
-                  if (sending) _inFlight(),
-                  _pendingCards(),
+                actions: [
+                  IconButton(
+                    tooltip: tr('Chat history'),
+                    onPressed:
+                        sending ||
+                            recording ||
+                            recorderBusy ||
+                            retryAudioPath != null
+                        ? null
+                        : () => scaffold.currentState?.openEndDrawer(),
+                    icon: const Icon(Icons.history_rounded),
+                  ),
                 ],
               ),
+        key: scaffold,
+        endDrawer: _historyDrawer(store),
+        onEndDrawerChanged: (opened) {
+          if (opened) unawaited(_refreshHistory());
+        },
+        body: SafeArea(
+          top: callMode,
+          child: VoiceExperience(
+            keyboardOpen: MediaQuery.viewInsetsOf(context).bottom > 0,
+            minimal: callMode,
+            proposals: _pendingCards(),
+            onClose: () => unawaited(_leaveCall()),
+            recording:
+                recording && (!handsFree || voiceActivity?.ready == true),
+            busy:
+                recorderBusy ||
+                speechRetryBusy ||
+                loading ||
+                (handsFree && recording && voiceActivity?.ready != true),
+            sending: sending,
+            transcribed: transcribed,
+            speaking: replySounding,
+            muted: mutedAudio,
+            seconds: recordingSeconds,
+            level: soundLevel,
+            hasMessages: messages.isNotEmpty,
+            hasRetry: retryAudioPath != null,
+            retryIsEmpty: retryWasEmpty,
+            canReplay: latestAssistant != null && !speechRetryBusy,
+            error: voiceError,
+            handsFree: handsFree,
+            voiceLabel: AriaVoice.find(preferredVoice).label,
+            allowance: quota == null
+                ? null
+                : tr('{count} LEFT TODAY', {'count': quota!.remaining}),
+            allowanceLow: quota?.low ?? false,
+            controller: input,
+            scroll: scroll,
+            onRecord: _toggleVoice,
+            onCancel: _cancelRecording,
+            onRetry: () {
+              final path = retryAudioPath;
+              if (path != null) _sendVoice(path);
+            },
+            onDiscard: _discardAudio,
+            onHandsFree: (value) => unawaited(_setHandsFree(value)),
+            onPickVoice: () => unawaited(_pickVoice()),
+            onMute: () => unawaited(_setMuted(!mutedAudio)),
+            onReplay: () {
+              if (replySounding) {
+                unawaited(_stopReply());
+              } else {
+                unawaited(_replay());
+              }
+            },
+            onSend: _sendTyped,
+            assistantName: store.assistantName,
+            messages: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < messages.length; i++)
+                  _bubble(messages[i], i),
+                if (sending) _inFlight(),
+                _pendingCards(),
+              ],
             ),
           ),
         ),
       );
+      if (callMode) {
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle.light.copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: const Color(0xff070812),
+          ),
+          child: Theme(
+            data: darkAppTheme,
+            child: VoiceCallBackdrop(child: voiceScaffold),
+          ),
+        );
+      }
+      return Backdrop(child: voiceScaffold);
     }
     return Backdrop(
       child: Scaffold(
@@ -1904,6 +2081,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
           ],
         ),
         endDrawer: _historyDrawer(store),
+        onEndDrawerChanged: (opened) {
+          if (opened) unawaited(_refreshHistory());
+        },
         body: SafeArea(
           child: Column(
             children: [
@@ -2427,16 +2607,81 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }, success: 'Chat history exported');
   }
 
-  /// Keeps a conversation past the retention window, or lets it age out again.
+  Future<void> _refreshHistory() async {
+    if (historyLoading || !mounted) return;
+    setState(() {
+      historyLoading = true;
+      historyError = null;
+    });
+    try {
+      await StoreScope.read(context).loadConversations();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => historyError = 'Could not load history. Please try again.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => historyLoading = false);
+    }
+  }
+
+  Future<void> _resetConversation() async {
+    await _stopReply();
+    if (!mounted) return;
+    input.clear();
+    setState(() {
+      conversationId = null;
+      messages = [];
+      pendingActions = [];
+      lastReply = const [];
+      streamingText = '';
+      activeTools = const [];
+      voiceError = null;
+      title = 'New chat';
+    });
+  }
+
   Future<void> _toggleSaved(ConversationSummary item) async {
+    if (historyMutating) return;
     final store = StoreScope.read(context);
-    await runAction(context, () async {
-      await store.api.ai.setConversationSaved(item.id, !item.saved);
-      await store.loadConversations();
-    }, success: item.saved ? 'Chat will age out again' : 'Chat kept');
+    setState(() => historyMutating = true);
+    try {
+      await runAction(context, () async {
+        await store.api.ai.setConversationSaved(item.id, !item.saved);
+        await store.loadConversations();
+      }, success: item.saved ? 'Chat will age out again' : 'Chat kept');
+    } finally {
+      if (mounted) setState(() => historyMutating = false);
+    }
+  }
+
+  Future<void> _deleteHistoryItem(ConversationSummary item) async {
+    if (historyMutating) return;
+    final approved = await confirm(
+      context,
+      'Delete conversation?',
+      'Permanently delete this conversation and its messages?',
+      action: 'Delete',
+      danger: true,
+    );
+    if (!approved || !mounted) return;
+    final store = StoreScope.read(context);
+    setState(() => historyMutating = true);
+    try {
+      await runAction(context, () async {
+        await store.api.ai.deleteConversation(item.id);
+        // Remove locally immediately; a failed refresh cannot revive a deleted chat.
+        store.removeConversation(item.id);
+        if (conversationId == item.id) await _resetConversation();
+      }, success: 'Conversation deleted');
+    } finally {
+      if (mounted) setState(() => historyMutating = false);
+    }
   }
 
   Future<void> _deleteAllHistory(AppStore store) async {
+    if (historyMutating) return;
     final approved = await confirm(
       context,
       'Delete all chat history?',
@@ -2445,131 +2690,50 @@ class _ConversationScreenState extends State<ConversationScreen> {
       danger: true,
     );
     if (!approved || !mounted) return;
-    await runAction(context, () async {
-      await store.api.ai.deleteAllConversations();
-      store.clearConversations();
-      if (!mounted) return;
-      setState(() {
-        conversationId = null;
-        messages = [];
-        pendingActions = [];
-        lastReply = const [];
-        title = 'New chat';
-      });
-    }, success: 'Chat history deleted');
+    setState(() => historyMutating = true);
+    try {
+      await runAction(context, () async {
+        await store.api.ai.deleteAllConversations();
+        store.clearConversations();
+        await _resetConversation();
+      }, success: 'Chat history deleted');
+    } finally {
+      if (mounted) setState(() => historyMutating = false);
+    }
   }
 
-  Widget _historyDrawer(AppStore store) {
-    final needle = historyQuery.toLowerCase();
-    final items = store.conversations
-        .where((item) => item.title.toLowerCase().contains(needle))
-        .toList();
-    return Drawer(
-      backgroundColor: AppPalette.of(context).surface,
-      child: SafeArea(
-        child: Column(
-          children: [
-            ListTile(
-              title: const Text('Chat history'),
-              trailing: IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
-              ),
-            ),
-            if (store.conversations.isNotEmpty)
-              ListTile(
-                leading: const Icon(Icons.download_outlined),
-                title: const Text('Download all'),
-                onTap: () {
-                  Navigator.pop(context);
-                  unawaited(_downloadAll(store));
-                },
-              ),
-            if (store.conversations.isNotEmpty)
-              ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: const Text('Delete all history'),
-                onTap: () {
-                  Navigator.pop(context);
-                  unawaited(_deleteAllHistory(store));
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text('New chat'),
-              onTap: () {
-                setState(() {
-                  messages = [];
-                  pendingActions = [];
-                  conversationId = null;
-                  title = 'New chat';
-                });
-                Navigator.pop(context);
-              },
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: TextField(
-                onChanged: (value) => setState(() => historyQuery = value),
-                decoration: InputDecoration(
-                  hintText: tr('Search chat history'),
-                  prefixIcon: Icon(
-                    Icons.search,
-                    size: 20,
-                    color: AppPalette.of(context).muted,
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: items.isEmpty
-                  ? const EmptyState('No saved chats yet.')
-                  : ListView(
-                      children: items
-                          .map(
-                            (item) => ListTile(
-                              title: Text(
-                                item.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: Text(
-                                item.saved
-                                    ? tr('Kept')
-                                    : relativeTime(item.updatedAt),
-                                style: const TextStyle(fontSize: 10),
-                              ),
-                              // History ages out on its own, so this is how a
-                              // conversation worth keeping stays.
-                              trailing: IconButton(
-                                tooltip: item.saved
-                                    ? tr('Stop keeping this chat')
-                                    : tr('Keep this chat'),
-                                onPressed: () => _toggleSaved(item),
-                                icon: Icon(
-                                  item.saved
-                                      ? Icons.bookmark
-                                      : Icons.bookmark_border,
-                                  size: 20,
-                                  color: item.saved
-                                      ? AppPalette.of(context).accent
-                                      : AppPalette.of(context).muted,
-                                ),
-                              ),
-                              onTap: () {
-                                Navigator.pop(context);
-                                _loadConversation(item.id);
-                              },
-                            ),
-                          )
-                          .toList(),
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _historyDrawer(AppStore store) => ConversationHistory(
+    items: store.conversations,
+    premium: store.isPremium,
+    loading: historyLoading,
+    error: historyError == null ? null : tr(historyError!),
+    disabled:
+        historyMutating || sending || recording || recorderBusy || loading,
+    onRefresh: _refreshHistory,
+    onOpen: (item) {
+      Navigator.pop(context);
+      unawaited(
+        _stopReply().then((_) {
+          if (mounted) return _loadConversation(item.id);
+        }),
+      );
+    },
+    onNew: () {
+      Navigator.pop(context);
+      unawaited(_resetConversation());
+    },
+    onSave: (item) => unawaited(_toggleSaved(item)),
+    onDelete: (item) => unawaited(_deleteHistoryItem(item)),
+    onDeleteAll: () => unawaited(_deleteAllHistory(store)),
+    onDownload: () {
+      Navigator.pop(context);
+      unawaited(_downloadAll(store));
+    },
+    onUpgrade: () {
+      Navigator.pop(context);
+      go(context, '/subscription');
+    },
+  );
 }
 
 /// Opens a continuous voice conversation without navigating away after each turn.

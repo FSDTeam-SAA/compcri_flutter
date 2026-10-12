@@ -975,10 +975,13 @@ class ConversationSummary {
     required this.title,
     this.updatedAt,
     this.saved = false,
+    this.expiresAt,
+    this.historyRetentionDays,
   });
 
   final String id, title;
-  final DateTime? updatedAt;
+  final DateTime? updatedAt, expiresAt;
+  final int? historyRetentionDays;
 
   /// Marked to outlive the retention sweep. Only a paid account can set it.
   final bool saved;
@@ -989,6 +992,8 @@ class ConversationSummary {
         title: _string(json['title'], 'New chat'),
         updatedAt: _date(json['updatedAt']),
         saved: json['savedAt'] != null,
+        expiresAt: _date(json['expiresAt']),
+        historyRetentionDays: (json['historyRetentionDays'] as num?)?.toInt(),
       );
 }
 

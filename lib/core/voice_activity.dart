@@ -4,7 +4,8 @@ enum VoiceTurnDecision { listen, send, pause }
 class VoiceActivity {
   static const pauseAfterSpeech = Duration(milliseconds: 1800);
   static const noSpeechTimeout = Duration(seconds: 12);
-  static const _speechConfirmation = Duration(milliseconds: 200);
+  // Ignore brief classifier spikes (including microphone startup tones).
+  static const _speechConfirmation = Duration(milliseconds: 300);
   Duration _now = Duration.zero;
   Duration? _candidate, _lastSpeech, _lastSample;
   bool _voiced = false;

@@ -1,0 +1,5 @@
+// Dart FFI looks this up by name. No Objective-C call references the static
+// ONNX C library, so archive linking/stripping otherwise removes the entrypoint.
+OTHER_LDFLAGS = $(inherited) -Wl,-u,_OrtGetApiBase -Wl,-export_dynamic
+STRIP_INSTALLED_PRODUCT = NO
+STRIP_STYLE = non-global

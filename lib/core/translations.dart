@@ -4,6 +4,43 @@
 const Map<String, Map<String, String>> translations = {'pt': _pt, 'es': _es};
 
 const _pt = <String, String>{
+  'Automatic speech detection is unavailable. Speak, then tap Send now.':
+      'A detecção automática de fala está indisponível. Fale e depois toque em Enviar agora.',
+  'Could not play the reply. Tap Replay reply to try again.':
+      'Não foi possível reproduzir a resposta. Toque em Reproduzir resposta para tentar novamente.',
+  'Conversation history': 'Histórico de conversas',
+  'Pro': 'Pro',
+  'Free': 'Grátis',
+  'New conversation': 'Nova conversa',
+  'Search history': 'Pesquisar histórico',
+  '{days}-day history': 'Histórico de {days} dias',
+  'Unsaved conversations are automatically deleted after {days} days.':
+      'Conversas não salvas são excluídas automaticamente após {days} dias.',
+  'Conversations are automatically deleted after {days} days.':
+      'As conversas são excluídas automaticamente após {days} dias.',
+  'Recent': 'Recentes',
+  'Saved': 'Salvas',
+  'No conversations found.': 'Nenhuma conversa encontrada.',
+  'No conversations yet.': 'Nenhuma conversa ainda.',
+  'Tap the bookmark to save.': 'Toque no marcador para salvar.',
+  'Saved conversations stay until you delete them.':
+      'As conversas salvas ficam até você excluí-las.',
+  'Keep what matters': 'Guarde o que importa',
+  'Get 30 days of history and save important conversations with Pro.':
+      'Tenha 30 dias de histórico e salve conversas importantes com o Pro.',
+  'Explore Pro': 'Conheça o Pro',
+  'Unsave conversation': 'Deixar de salvar conversa',
+  'Save conversation': 'Salvar conversa',
+  'Delete conversation': 'Excluir conversa',
+  'Will be deleted tomorrow': 'Será excluída amanhã',
+  'Will be deleted today': 'Será excluída hoje',
+  'Could not load history. Please try again.':
+      'Não foi possível carregar o histórico. Tente novamente.',
+  'Delete conversation?': 'Excluir conversa?',
+  'Permanently delete this conversation and its messages?':
+      'Excluir permanentemente esta conversa e suas mensagens?',
+  'Conversation deleted': 'Conversa excluída',
+  'Your AI Calendar Assistant': 'Seu assistente de calendário com IA',
   'Past dates are view-only. Choose today or a future date.':
       'Datas passadas são apenas para consulta. Escolha hoje ou uma data futura.',
   'Audio playback is unavailable. Open the conversation to read the reply.':
@@ -368,6 +405,10 @@ const _pt = <String, String>{
       'Não foi possível iniciar a detecção de fala. Tente novamente ou digite abaixo.',
   'Could not detect speech. Tap the mic to try again, or type below.':
       'Não foi possível detectar fala. Toque no microfone para tentar novamente ou digite abaixo.',
+  'Recording was interrupted. Retry the saved audio, or discard it and try again.':
+      'A gravação foi interrompida. Reenvie o áudio salvo ou descarte-o e tente novamente.',
+  'Recording was interrupted. Tap the mic to try again, or type below.':
+      'A gravação foi interrompida. Toque no microfone para tentar novamente ou digite abaixo.',
   'Audio playback is unavailable. You can read the reply below.':
       'Não foi possível reproduzir o áudio. Você pode ler a resposta abaixo.',
   'Transcript unavailable for this recording.':
@@ -428,6 +469,7 @@ const _pt = <String, String>{
   'Search chat history': 'Pesquisar no histórico',
   'No saved chats yet.': 'Nenhuma conversa salva ainda.',
   'Listening to you': 'Ouvindo você',
+  'Tap the mic to talk': 'Toque no microfone para falar',
   'Working on your message': 'Trabalhando na sua mensagem',
   '{name} is speaking': '{name} está falando',
   'Your recording is saved': 'Sua gravação está salva',
@@ -977,6 +1019,43 @@ const _pt = <String, String>{
 };
 
 const _es = <String, String>{
+  'Automatic speech detection is unavailable. Speak, then tap Send now.':
+      'La detección automática de voz no está disponible. Habla y luego toca Enviar ahora.',
+  'Could not play the reply. Tap Replay reply to try again.':
+      'No se pudo reproducir la respuesta. Toca Reproducir respuesta para intentarlo de nuevo.',
+  'Conversation history': 'Historial de conversaciones',
+  'Pro': 'Pro',
+  'Free': 'Gratis',
+  'New conversation': 'Nueva conversación',
+  'Search history': 'Buscar historial',
+  '{days}-day history': 'Historial de {days} días',
+  'Unsaved conversations are automatically deleted after {days} days.':
+      'Las conversaciones no guardadas se eliminan automáticamente después de {days} días.',
+  'Conversations are automatically deleted after {days} days.':
+      'Las conversaciones se eliminan automáticamente después de {days} días.',
+  'Recent': 'Recientes',
+  'Saved': 'Guardadas',
+  'No conversations found.': 'No se encontraron conversaciones.',
+  'No conversations yet.': 'Aún no hay conversaciones.',
+  'Tap the bookmark to save.': 'Toca el marcador para guardar.',
+  'Saved conversations stay until you delete them.':
+      'Las conversaciones guardadas permanecen hasta que las elimines.',
+  'Keep what matters': 'Guarda lo que importa',
+  'Get 30 days of history and save important conversations with Pro.':
+      'Obtén 30 días de historial y guarda conversaciones importantes con Pro.',
+  'Explore Pro': 'Explorar Pro',
+  'Unsave conversation': 'Dejar de guardar conversación',
+  'Save conversation': 'Guardar conversación',
+  'Delete conversation': 'Eliminar conversación',
+  'Will be deleted tomorrow': 'Se eliminará mañana',
+  'Will be deleted today': 'Se eliminará hoy',
+  'Could not load history. Please try again.':
+      'No se pudo cargar el historial. Inténtalo de nuevo.',
+  'Delete conversation?': '¿Eliminar conversación?',
+  'Permanently delete this conversation and its messages?':
+      '¿Eliminar permanentemente esta conversación y sus mensajes?',
+  'Conversation deleted': 'Conversación eliminada',
+  'Your AI Calendar Assistant': 'Tu asistente de calendario con IA',
   'Past dates are view-only. Choose today or a future date.':
       'Las fechas pasadas son solo de consulta. Elige hoy o una fecha futura.',
   'Audio playback is unavailable. Open the conversation to read the reply.':
@@ -1343,6 +1422,10 @@ const _es = <String, String>{
       'No se pudo iniciar la detección de voz. Inténtalo de nuevo o escribe abajo.',
   'Could not detect speech. Tap the mic to try again, or type below.':
       'No se pudo detectar la voz. Toca el micrófono para intentarlo de nuevo o escribe abajo.',
+  'Recording was interrupted. Retry the saved audio, or discard it and try again.':
+      'La grabación se interrumpió. Reenvía el audio guardado o descártalo e inténtalo de nuevo.',
+  'Recording was interrupted. Tap the mic to try again, or type below.':
+      'La grabación se interrumpió. Toca el micrófono para intentarlo de nuevo o escribe abajo.',
   'Audio playback is unavailable. You can read the reply below.':
       'No se puede reproducir el audio. Puedes leer la respuesta abajo.',
   'Transcript unavailable for this recording.':
@@ -1403,6 +1486,7 @@ const _es = <String, String>{
   'Search chat history': 'Buscar en el historial',
   'No saved chats yet.': 'Aún no hay chats guardados.',
   'Listening to you': 'Te escucho',
+  'Tap the mic to talk': 'Toca el micrófono para hablar',
   'Working on your message': 'Trabajando en tu mensaje',
   '{name} is speaking': '{name} está hablando',
   'Your recording is saved': 'Tu grabación está guardada',

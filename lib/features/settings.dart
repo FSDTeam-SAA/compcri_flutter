@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart' hide Text;
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:purchases_flutter/purchases_flutter.dart' show Package;
+import 'package:purchases_flutter/purchases_flutter.dart'
+    show Offering, Package;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
@@ -2190,21 +2191,183 @@ class _SummaryScreenState extends State<SummaryScreen> {
   Package? package;
   bool loading = true;
 
+  /// The influencer code applied at checkout, if any.
+  InfluencerCode? coupon;
+
+  /// The code is valid, but the store has no discounted plan for it on this
+  /// device yet, so the regular price is what would be charged.
+  bool couponUnavailable = false;
+  final codeField = TextEditingController();
+
   bool get yearly => widget.plan == 'Premium Yearly';
 
   @override
   void initState() {
     super.initState();
-    _loadOffering();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadOffering());
   }
 
+  @override
+  void dispose() {
+    codeField.dispose();
+    super.dispose();
+  }
+
+  /// Picks up a code applied on an earlier visit, then loads the plans.
   Future<void> _loadOffering() async {
-    final offering = await StorePurchases.instance.offering();
+    if (!mounted) return;
+    final store = StoreScope.read(context);
+    InfluencerCode? applied;
+    try {
+      applied = await store.api.coupons.applied();
+    } catch (_) {
+      // Without the code the regular plans still load.
+    }
+    await _useOffering(applied);
+  }
+
+  /// Shows the code's discounted plan when the store has it, and the regular
+  /// one otherwise.
+  Future<void> _useOffering(InfluencerCode? code) async {
+    Package? chosen;
+    if (code != null) {
+      final discounted = await StorePurchases.instance.offering(
+        code.offeringId,
+      );
+      chosen = yearly ? discounted?.annual : discounted?.monthly;
+    }
+    final discounted = chosen != null;
+    if (!discounted) {
+      final Offering? regular = await StorePurchases.instance.offering();
+      chosen = yearly ? regular?.annual : regular?.monthly;
+    }
     if (!mounted) return;
     setState(() {
-      package = yearly ? offering?.annual : offering?.monthly;
+      coupon = code;
+      couponUnavailable = code != null && !discounted;
+      package = chosen;
       loading = false;
     });
+  }
+
+  Future<void> _applyCode(AppStore store) async {
+    final text = codeField.text.trim();
+    if (text.isEmpty) {
+      toastError(context, 'Enter a code first.');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    try {
+      final code = await store.api.coupons.apply(text);
+      await _useOffering(code);
+      if (!mounted) return;
+      if (couponUnavailable) {
+        toastError(context, 'This code is not available in the store yet.');
+      } else {
+        unawaited(StorePurchases.instance.tagInfluencerCode(code.code));
+        toast(context, 'Code applied.');
+      }
+    } on ApiException catch (error) {
+      if (mounted) toastError(context, error.message);
+    }
+  }
+
+  Future<void> _removeCode(AppStore store) async {
+    try {
+      await store.api.coupons.remove();
+    } on ApiException catch (error) {
+      if (mounted) toastError(context, error.message);
+      return;
+    }
+    unawaited(StorePurchases.instance.tagInfluencerCode(null));
+    codeField.clear();
+    await _useOffering(null);
+  }
+
+  Widget _codeSection(AppStore store) {
+    final applied = coupon;
+    final muted = AppPalette.of(context).muted;
+    if (applied == null) {
+      return Surface(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Have an influencer code?',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: codeField,
+                    textCapitalization: TextCapitalization.characters,
+                    autocorrect: false,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: tr('Enter code'),
+                    ),
+                    onSubmitted: (_) => _applyCode(store),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 104,
+                  child: AsyncButton(
+                    'Apply',
+                    outline: true,
+                    onPressed: () => _applyCode(store),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+    return Surface(
+      color: AppPalette.of(context).wash(const Color(0xffe8f7ee)),
+      child: Row(
+        children: [
+          Icon(
+            couponUnavailable ? Icons.info_outline : Icons.local_offer_outlined,
+            color: couponUnavailable ? const Color(0xffb36b00) : purple,
+            size: 22,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tr('Code {code} applied', {'code': applied.code}),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  couponUnavailable
+                      ? tr('This code is not available in the store yet.')
+                      : tr('{discount} off · from {name}', {
+                          'discount': applied.discountLabel,
+                          'name': applied.influencerName,
+                        }),
+                  style: TextStyle(fontSize: 11, color: muted),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => _removeCode(store),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Pulls the account back in step with the store, so premium gates open on
@@ -2307,6 +2470,8 @@ class _SummaryScreenState extends State<SummaryScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 18),
+          _codeSection(store),
           const SizedBox(height: 18),
           Surface(
             color: AppPalette.of(context).wash(const Color(0xffe2edff)),

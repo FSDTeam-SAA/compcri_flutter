@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'core/client_identity.dart';
 import 'core/design.dart';
 import 'core/i18n.dart';
 import 'core/purchases.dart';
@@ -19,6 +20,10 @@ import 'features/settings.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Before anything else writes preferences, so a first launch is told
+  // apart from an update of an app installed before launches were counted.
+  await ClientIdentity.prepare();
+  unawaited(ClientIdentity.reportLaunch());
   // Month and weekday names for every language the app speaks, then the
   // language itself, so the first frame is already in the right one.
   await initializeDateFormatting();

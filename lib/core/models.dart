@@ -1250,6 +1250,38 @@ class SubscriptionInfo {
   }
 }
 
+/// An influencer code the user applied at checkout. While it is applied, the
+/// app sells the plans in [offeringId] — the discounted products set up in
+/// RevenueCat for this code — instead of the regular ones.
+class InfluencerCode {
+  const InfluencerCode({
+    required this.code,
+    required this.influencerName,
+    required this.discountType,
+    required this.discountValue,
+    required this.offeringId,
+  });
+
+  final String code, influencerName, discountType, offeringId;
+  final num discountValue;
+
+  /// "20% off" or "\$5.00 off", for the line under the code.
+  String get discountLabel {
+    final value = discountValue % 1 == 0
+        ? discountValue.toInt().toString()
+        : discountValue.toStringAsFixed(2);
+    return discountType == 'PERCENTAGE' ? '$value%' : '\$$value';
+  }
+
+  factory InfluencerCode.fromJson(Map<String, dynamic> json) => InfluencerCode(
+    code: _string(json['code'], ''),
+    influencerName: _string(json['influencerName'], ''),
+    discountType: _string(json['discountType'], 'PERCENTAGE'),
+    discountValue: json['discountValue'] as num? ?? 0,
+    offeringId: _string(json['offeringId'], ''),
+  );
+}
+
 /// Delegated calendar access — the app calls these "secretaries".
 class Delegation {
   const Delegation({

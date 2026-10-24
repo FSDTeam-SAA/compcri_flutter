@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Reject an exported IPA when the native speech detector cannot be loaded."""
+import lib.session
 import argparse
 from pathlib import Path
 import plistlib

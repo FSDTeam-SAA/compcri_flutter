@@ -82,14 +82,26 @@ class StorePurchases {
   }
 
   /// The packages on offer, or null when the store has nothing to show: no
-  /// key, no network, or products not approved yet.
-  Future<Offering?> offering() async {
+  /// key, no network, or products not approved yet. [id] picks a specific
+  /// offering — an influencer code's discounted plans — instead of the
+  /// current one, and is null when RevenueCat has no offering by that name.
+  Future<Offering?> offering([String? id]) async {
     if (!_available) return null;
     try {
-      return (await Purchases.getOfferings()).current;
+      final offerings = await Purchases.getOfferings();
+      return id == null ? offerings.current : offerings.getOffering(id);
     } catch (_) {
       return null;
     }
+  }
+
+  /// Records the influencer code on the customer in RevenueCat, so it shows
+  /// in RevenueCat's own charts too. Null clears it.
+  Future<void> tagInfluencerCode(String? code) async {
+    if (!_available) return;
+    try {
+      await Purchases.setAttributes({'influencer_code': code ?? ''});
+    } catch (_) {}
   }
 
   /// Runs the store's purchase sheet. True once the entitlement is live, false

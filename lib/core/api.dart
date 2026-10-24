@@ -999,6 +999,25 @@ class SubscriptionApi {
   Future<void> reconcile() => _client.post('/subscriptions/reconcile');
 }
 
+class CouponApi {
+  CouponApi(this._client);
+  final ApiClient _client;
+
+  /// Holds [code] for the next store purchase; raises [ApiException] with
+  /// `COUPON_INVALID`, `COUPON_EXPIRED`, `COUPON_ALREADY_USED` and friends.
+  Future<InfluencerCode> apply(String code) async => InfluencerCode.fromJson(
+    _map(await _client.post('/coupons/apply', body: {'code': code})),
+  );
+
+  /// The code still applied from an earlier visit, if it can still be used.
+  Future<InfluencerCode?> applied() async {
+    final data = await _client.get('/coupons/applied');
+    return data is Map ? InfluencerCode.fromJson(data.cast()) : null;
+  }
+
+  Future<void> remove() => _client.delete('/coupons/applied');
+}
+
 class DelegationApi {
   DelegationApi(this._client);
   final ApiClient _client;
@@ -1063,6 +1082,7 @@ class Api {
     media = MediaApi(this.client);
     legal = LegalApi(this.client);
     subscriptions = SubscriptionApi(this.client);
+    coupons = CouponApi(this.client);
     delegations = DelegationApi(this.client);
   }
 
@@ -1077,5 +1097,6 @@ class Api {
   late final MediaApi media;
   late final LegalApi legal;
   late final SubscriptionApi subscriptions;
+  late final CouponApi coupons;
   late final DelegationApi delegations;
 }

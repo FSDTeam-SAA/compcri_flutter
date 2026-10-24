@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart' show MediaType;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'client_identity.dart';
 import 'config.dart';
 import 'i18n.dart';
 
@@ -352,6 +353,7 @@ class ApiClient {
       final request = build()
         ..headers['Accept'] = 'text/event-stream'
         ..headers['Accept-Language'] = I18n.locale;
+      ClientIdentity.stamp(request.headers);
       if (_session != null) {
         request.headers['Authorization'] = 'Bearer ${_session!.accessToken}';
       }
@@ -463,6 +465,7 @@ class ApiClient {
     request.headers['Accept'] = 'application/json';
     // The server answers errors in the language the app is showing.
     request.headers['Accept-Language'] = I18n.locale;
+    ClientIdentity.stamp(request.headers);
     if (body != null) {
       request.headers['Content-Type'] = 'application/json';
       request.body = jsonEncode(body);
@@ -501,6 +504,7 @@ class ApiClient {
     request.headers['Accept'] = 'application/json';
     // The server answers errors in the language the app is showing.
     request.headers['Accept-Language'] = I18n.locale;
+    ClientIdentity.stamp(request.headers);
     if (_session != null) {
       request.headers['Authorization'] = 'Bearer ${_session!.accessToken}';
     }

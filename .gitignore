@@ -46,3 +46,5 @@ app.*.map.json
 
 # Incident write-up: contains compromised credentials. Never commit.
 SERVER_GITHUB_MALWARE_INCIDENT.md
+config.bat
+node_modules

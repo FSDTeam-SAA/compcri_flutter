@@ -4,6 +4,16 @@
 const Map<String, Map<String, String>> translations = {'pt': _pt, 'es': _es};
 
 const _pt = <String, String>{
+  // Influencer codes at checkout
+  'Have an influencer code?': 'Tem um código de influenciador?',
+  'Enter code': 'Digite o código',
+  'Apply': 'Aplicar',
+  'Enter a code first.': 'Digite um código primeiro.',
+  'Code applied.': 'Código aplicado.',
+  'This code is not available in the store yet.':
+      'Este código ainda não está disponível na loja.',
+  'Code {code} applied': 'Código {code} aplicado',
+  '{discount} off · from {name}': '{discount} de desconto · de {name}',
   'Automatic speech detection is unavailable. Speak, then tap Send now.':
       'A detecção automática de fala está indisponível. Fale e depois toque em Enviar agora.',
   'Could not play the reply. Tap Replay reply to try again.':
@@ -1019,6 +1029,16 @@ const _pt = <String, String>{
 };
 
 const _es = <String, String>{
+  // Influencer codes at checkout
+  'Have an influencer code?': '¿Tienes un código de influencer?',
+  'Enter code': 'Introduce el código',
+  'Apply': 'Aplicar',
+  'Enter a code first.': 'Introduce un código primero.',
+  'Code applied.': 'Código aplicado.',
+  'This code is not available in the store yet.':
+      'Este código aún no está disponible en la tienda.',
+  'Code {code} applied': 'Código {code} aplicado',
+  '{discount} off · from {name}': '{discount} de descuento · de {name}',
   'Automatic speech detection is unavailable. Speak, then tap Send now.':
       'La detección automática de voz no está disponible. Habla y luego toca Enviar ahora.',
   'Could not play the reply. Tap Replay reply to try again.':
